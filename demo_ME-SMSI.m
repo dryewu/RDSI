@@ -1,10 +1,10 @@
-function demo_mesmsi()
+function demo_ME-SMSI()
     %{
     ░█▀▀█ ░█▀▀▀█ ░█▀▄▀█ ░█▀▀▀ ░█▀▀▄ ▀█▀
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Multi-echo Spectrum Imaging (MESI)
+    Parameter estimation with multi-echo spherical mean spectrum Imaging (ME-SMSI)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
@@ -16,41 +16,31 @@ function demo_mesmsi()
 
     
     %% load multi-echo dMRI dataset
-    dataFolder = '/Users/wuye/dryewu/Research/Project/MESI/Code/Data';
-    TE = [75 85 95 105 115];
+    dataFolder = '/home/wuye/D_disk/MTE_dMRI/WDZ';
+    TE = [75 85 95 105 115 125 135];
     
-    ME_dwi = cell(1,length(TE));
-    ME_dwi_mean = cell(1,length(TE));
-    ME_info = cell(1,length(TE));
-    ME_bval = cell(1,length(TE));
-    ME_bvec = cell(1,length(TE));
+    fdwi    = arrayfun(@(x)fullfile(dataFolder,'proc',strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased.nii.gz')),TE,'UniformOutput',false);
+    fbvec   = arrayfun(@(x)fullfile(dataFolder,'proc',strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased.bvec')),TE,'UniformOutput',false);
+    fbval   = arrayfun(@(x)fullfile(dataFolder,'proc',strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased.bval')),TE,'UniformOutput',false);
+    fmask   = fullfile(dataFolder,'proc','MTE_mask.nii.gz');
 
+    ME_dwi_info     = cellfun(@(x)niftiinfo(x),fdwi,'UniformOutput',false);
+    ME_dwi          = cellfun(@(x)niftiread(x),ME_dwi_info,'UniformOutput',false);
+    ME_bval         = cellfun(@(x)round(importdata(x)'/100)*100,fbval,'UniformOutput',false); 
+    ME_bvec         = cellfun(@(x)importdata(x)',fbvec,'UniformOutput',false);
+    ME_mask_info    = niftiinfo(fmask);
+    ME_mask         = round(niftiread(fmask));
+    
+    ME_bshell       = cellfun(@(x)unique(x),ME_bval,'UniformOutput',false); 
+    ME_dwi_mean     = cell(size(ME_dwi));
     for i = 1:length(TE)
-        filename = fullfile(dataFolder,strcat('MTE_PA_',num2str(TE(i)),'_align_center_denoise_unring_preproc_epi_unbiased.nii.gz'));
-        info = niftiinfo(filename);
-        ME_dwi{1,i} = niftiread(info);
-        ME_info{1,i} = info;
-
-        filename = fullfile(dataFolder,strcat('MTE_PA_',num2str(TE(i)),'_align_center_denoise_unring_preproc_epi_unbiased.bvec'));
-        ME_bvec{1,i} = importdata(filename)';
-
-        filename = fullfile(dataFolder,strcat('MTE_PA_',num2str(TE(i)),'_align_center_denoise_unring_preproc_epi_unbiased.bval'));
-        ME_bval{1,i} = importdata(filename)';
-
-        bvals = ME_bval{1,i}; 
-        bvecs = ME_bvec{1,i}; 
-        dwi = ME_dwi{1,i};
-
-        bvals = round(bvals/100)*100;
-        bshell = unique(bvals);
-
-        for j = 1:length(bshell)
-            ME_dwi{j,i} = dwi(:,:,:,bvals == bshell(j));
-            ME_bval{j,i} = bshell(j);
-            ME_bvec{j,i} = bvecs(bvals == bshell(j),:);
-            ME_dwi_mean{j,i} = mean(ME_dwi{j,i},4);
+        ME_dwi_mean{i} = single(zeros([size(ME_dwi{i},[1,2,3]),length(ME_bshell{i})]));
+        for j = 1:length(ME_bshell{i})
+            ind = find(ME_bval{i} == ME_bshell{i}(j));
+            ME_dwi_mean{i}(:,:,:,j) = mean(ME_dwi{i}(:,:,:,ind),4);
         end
     end
+
 
     %% kernel
     adc_restricted = [];
@@ -69,59 +59,61 @@ function demo_mesmsi()
         end
     end
 
-    num_restricted  = size(adc_restricted,1);
-    num_hindered    = size(adc_hindered,1);
-    num_isotropic   = size(adc_isotropic,1);
+    num_restricted  = size(adc_restricted,1);  kernel_restricted = cell(length(TE),num_restricted);
+    num_hindered    = size(adc_hindered,1);    kernel_hindered   = cell(length(TE),num_hindered);
+    num_isotropic   = size(adc_isotropic,1);   kernel_isotropic   = cell(length(TE),num_isotropic);
+    
+    for i = 1:length(TE)
+        for j = 1:num_restricted
+            kernel_restricted{i,j} = single(zeros(length(ME_bshell{i}),1));
+            for k = 1:length(ME_bshell{i})
+                R = sqrt((ME_bshell{i}(k)+eps)*(adc_restricted(j,1)-adc_restricted(j,2)));
+                kernel_restricted{i,j}(k,1) = (sqrt(pi)*exp(-(ME_bshell{i}(k)+eps)*adc_restricted(j,2))*erf(R))/(2*R);
+            end
+        end
 
-    bshell = unique(cell2mat(ME_bval)) + eps;
-    num_bshell = length(bshell);
+        for j = 1:num_hindered
+            kernel_hindered{i,j} = single(zeros(length(ME_bshell{i}),1));
+            for k = 1:length(ME_bshell{i})
+                R = sqrt((ME_bshell{i}(k)+eps)*(adc_hindered(j,1)-adc_hindered(j,2)));
+                kernel_hindered{i,j}(k,1) = (sqrt(pi)*exp(-(ME_bshell{i}(k)+eps)*adc_hindered(j,2))*erf(R))/(2*R);
+            end
+        end
 
-    kernel_restricted   = cell(1,num_restricted);
-    kernel_hindered     = cell(1,num_hindered);
-    kernel_isotropic    = cell(1,num_isotropic);
+        for j = 1:num_isotropic
+            kernel_isotropic{i,j} = single(zeros(length(ME_bshell{i}),1));
+            for k = 1:length(ME_bshell{i})
+                kernel_isotropic{i,j}(k,1) = exp(-(ME_bshell{i}(k)+eps)*adc_isotropic(j)); 
+            end
+        end
+    end
 
+    blk_kernel_restricted = [];
     for i = 1:num_restricted
-        kernel_restricted{1,i} = zeros(num_bshell,1);
-        for j = 1:num_bshell
-            R = sqrt(bshell(j)*(adc_restricted(i,1)-adc_restricted(i,2)));
-            kernel_restricted{1,i}(j,1) = (sqrt(pi)*exp(-bshell(j)*adc_restricted(i,2))*erf(R))/(2*R);
-        end
+        blk_kernel_restricted = [blk_kernel_restricted blkdiag(kernel_restricted{:,i})];
     end
-
+    
+    blk_kernel_hindered = [];
     for i = 1:num_hindered
-        kernel_hindered{1,i} = zeros(num_bshell,1);
-        for j = 1:num_bshell
-            R = sqrt(bshell(j)*(adc_hindered(i,1)-adc_hindered(i,2)));
-            kernel_hindered{1,i}(j,1) = (sqrt(pi)*exp(-bshell(j)*adc_hindered(i,2))*erf(R))/(2*R);
-        end
+        blk_kernel_hindered = [blk_kernel_hindered blkdiag(kernel_hindered{:,i})];
     end
 
+    blk_kernel_isotropic = [];
     for i = 1:num_isotropic
-        kernel_isotropic{1,i} = zeros(num_bshell,1);
-        for j = 1:num_bshell
-            kernel_isotropic{1,i}(j,1) = exp(-bshell(j)*adc_isotropic(i)); 
-        end
+        blk_kernel_isotropic = [blk_kernel_isotropic blkdiag(kernel_isotropic{:,i})];
     end
+    
+    blk_kernel = [blk_kernel_restricted blk_kernel_hindered blk_kernel_isotropic];
 
-    kernel = [cell2mat(kernel_restricted) cell2mat(kernel_hindered) cell2mat(kernel_isotropic)];
+    %% Vectorization & Masked & arrayed
+    ME_mask_ind = find(ME_mask>0.5);
+    ME_dwi_mean_array = cellfun(@(x)reshape(x,size(x,1)*size(x,2)*size(x,3),size(x,4)),ME_dwi_mean,'UniformOutput',false);
+    ME_dwi_mean_array = cellfun(@(x)x(ME_mask_ind,:)',ME_dwi_mean_array,'UniformOutput',false);
+    ME_dwi_mean_array = cell2mat(ME_dwi_mean_array');
+    ME_dwi_mean_array_ind = all(ME_dwi_mean_array);
+    ME_dwi_mean_array = ME_dwi_mean_array(:,ME_dwi_mean_array_ind);
 
     
-    % masked dwi
-    filename = fullfile(dataFolder,'MTE_mask.nii.gz');
-    info = niftiinfo(filename);
-    mask = round(niftiread(info));
-    ind_mask = find(mask>0.5);
-    ME_dwi_mean_array = single(zeros([size(ME_dwi_mean{1}) numel(ME_dwi_mean)]));
-    num = 1;
-    for i = 1:size(ME_dwi_mean,2)
-        for j = 1:size(ME_dwi_mean,1)
-            ME_dwi_mean_array(:,:,:,num) = ME_dwi_mean{j,i};
-        end
-    end
-    [nx,ny,nz,ns] = size(ME_dwi_mean_array);
-    ME_dwi_mean_array = reshape(ME_dwi_mean_array,nx*ny*nz,ns);
-    ME_dwi_mean_array = ME_dwi_mean_array(ind_mask,:)';
-
 
 end
 
