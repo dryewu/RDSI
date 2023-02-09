@@ -42,6 +42,9 @@ function demo_ME_SMSI()
         end
     end
 
+    %% Normalization S/S0
+    ME_dwi_mean = cellfun(@(x)x(:,:,:,2:end)./x(:,:,:,1),ME_dwi_mean,'UniformOutput',false);
+    ME_bshell   = cellfun(@(x)x(2:end),ME_bshell,'UniformOutput',false);
 
     %% kernel
     adc_restricted = [];
@@ -116,52 +119,65 @@ function demo_ME_SMSI()
     ME_dwi_mean_array = ME_dwi_mean_array(:,ME_dwi_mean_array_ind);
 
 
-    %% optimization with L1/L2 BCP solver
-    alpha = zeros(size(blk_kernel,2),size(ME_dwi_mean_array,2));
-    for i = 1:1000%size(ME_dwi_mean_array,2)
-        alpha(:,i) = lsqnonneg(double(blk_kernel),double(ME_dwi_mean_array(:,i)));
-    end
-        
+    %% optimization
+    lb      = [10;10;10;zeros(num_restricted+num_hindered+num_isotropic,1)];
+    ub      = [inf;inf;inf;ones(num_restricted+num_hindered+num_isotropic,1)];
+    Aeq     = [zeros(3,3) blkdiag(ones(1,num_restricted),ones(1,num_hindered),ones(1,num_isotropic))];
+    beq     = [1;1;1];
 
-
-    ind_groups = (0:length(TE):length(TE)*(num_restricted+num_hindered+num_isotropic-1)-1);
-
-    param               =   [];
-    param.itermax       =   100;
-    param.tol           =   1e-3;
-    param.mode          =   2; 
-    param.lambda        =   0.15;
-    param.numThreads    =   -1; 
-    
-    
-    D = blk_kernel'*blk_kernel;
-    X = blk_kernel'*ME_dwi_mean_array;
-    alpha0              =   D\X;
-    alpha               =   mexL1L2BCD(X,D,alpha0,int32(ind_groups),param);
-
-    %% nonlinear fitting
-%     alpha_restricted    =   alpha(1:length(TE)*num_restricted);
-%     alpha_hindered      =   alpha(1+length(TE)*num_restricted : length(TE)*num_restricted+length(TE)*num_hindered);
-%     alpha_isotropic     =   alpha(1+length(TE)*num_restricted+length(TE)*num_hindered:end);
-    lb  = zeros(size(alpha,1)+3,1);
-    ub  = ones(size(alpha,1)+3,1);
-    X   = zeros(size(alpha,1)+3,size(alpha,2));
-    x0  = [100*ones(3,1); rand(size(alpha,1),1)];
     options = optimoptions(@lsqnonlin,'Algorithm','Levenberg-Marquardt');
+    alpha_echo = zeros(size(blk_kernel,2),size(ME_dwi_mean_array,2));
+    alpha_coef = zeros(num_restricted+num_hindered+num_isotropic+3,size(ME_dwi_mean_array,2));
+    alpha_init = [100;100;100;rand(num_restricted+num_hindered+num_isotropic,1)];
 
-    for i = 1:size(alpha,2)
-        fun = @(x)echoFunc(x,alpha(:,i),TE,num_restricted,num_hindered,num_isotropic);
-        X(:,i) = lsqnonlin(fun,x0,lb,ub,options);
+    for i = 1:size(ME_dwi_mean_array,2)
+        beta = lsqnonneg(double(blk_kernel),double(ME_dwi_mean_array(:,i)));
+        alpha_echo(:,i) = beta;
+        fun = @(x)echoFunc(x,beta,TE,num_restricted,num_hindered,num_isotropic);
+        alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,ub,[],options);
     end
+
+    temp2 = single(zeros(1,length(ME_dwi_mean_array_ind)));
+
+
+
+    temp = single(ME_mask * 0);
     
-    for i = 1:3
-        temp = single(ME_mask * 0);
-        temp2 = single(zeros(1,length(ME_dwi_mean_array_ind)));
-        temp2(1,ME_dwi_mean_array_ind) = X(i,:);
-        temp(ME_mask_ind) = temp2;
-        niftiwrite(temp,strcat('temp_',num2str(i),'.nii'),'Compressed',true);
+    temp2(1,ME_dwi_mean_array_ind) = X(i,:);
+    temp(ME_mask_ind) = temp2;
+    niftiwrite(temp,strcat('temp_',num2str(i),'.nii'),'Compressed',true);
+
+
     end
 end
+
+function FF = echoFunc(x,alpha,TE,num_restricted,num_hindered,num_isotropic)
+    % x: [ T_2^h, T_2^r, T_2^f, w_1^h, w_2^h...w_1^r, w_2^r...,w_1^f, w_2^f...]
+    num = 1;
+    for i = 1:num_restricted
+        for j = 1:length(TE)
+            F(num) = exp(-TE(j)/x(1)) * x(3+i) - alpha(num);
+            num = num + 1;
+        end
+    end
+
+    for i = 1:num_hindered
+        for j = 1:length(TE)
+            F(num) = exp(-TE(j)/x(2)) * x(3+num_restricted+i) - alpha(num);
+            num = num + 1;
+        end
+    end
+
+    for i = 1:num_isotropic
+        for j = 1:length(TE)
+            F(num) = exp(-TE(j)/x(3)) * x(3+num_restricted+num_hindered+i) - alpha(num);
+            num = num + 1;
+        end
+    end
+
+    FF = norm(F);
+end
+
 
 
 
