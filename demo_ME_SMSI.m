@@ -43,7 +43,7 @@ function demo_ME_SMSI()
     end
 
     %% Normalization S/S0
-    ME_dwi_mean = cellfun(@(x)x(:,:,:,2:end)./x(:,:,:,1),ME_dwi_mean,'UniformOutput',false);
+    ME_dwi_mean = cellfun(@(x)x(:,:,:,2:end)./(eps+x(:,:,:,1)),ME_dwi_mean,'UniformOutput',false);
     ME_bshell   = cellfun(@(x)x(2:end),ME_bshell,'UniformOutput',false);
 
     %% kernel
@@ -125,14 +125,12 @@ function demo_ME_SMSI()
     Aeq     = [zeros(3,3) blkdiag(ones(1,num_restricted),ones(1,num_hindered),ones(1,num_isotropic))];
     beq     = [1;1;1];
 
-    options = optimoptions(@lsqnonlin,'Algorithm','Levenberg-Marquardt');
-    alpha_echo = zeros(size(blk_kernel,2),size(ME_dwi_mean_array,2));
+    options = optimoptions(@fmincon,'Display','off');
     alpha_coef = zeros(num_restricted+num_hindered+num_isotropic+3,size(ME_dwi_mean_array,2));
     alpha_init = [100;100;100;rand(num_restricted+num_hindered+num_isotropic,1)];
 
-    for i = 1:size(ME_dwi_mean_array,2)
+    parfor i = 1:size(ME_dwi_mean_array,2)
         beta = lsqnonneg(double(blk_kernel),double(ME_dwi_mean_array(:,i)));
-        alpha_echo(:,i) = beta;
         fun = @(x)echoFunc(x,beta,TE,num_restricted,num_hindered,num_isotropic);
         alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,ub,[],options);
     end
@@ -143,7 +141,7 @@ function demo_ME_SMSI()
     temp(:,ME_mask_ind) = temp2;
 
     temp = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),num_restricted+num_hindered+num_isotropic+3);
-    niftiwrite(temp,'temp.nii','Compressed',true);
+    niftiwrite(temp,'~/temp.nii','Compressed',true);
 end
 
 function FF = echoFunc(x,alpha,TE,num_restricted,num_hindered,num_isotropic)
