@@ -1,6 +1,6 @@
 # Multi-echo Spectrum Imaging on Diffusion MRI
 
-Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging on Diffusion MRI In *Medical Image Computing and Computer Assisted Intervention–MICCAI. (To be submission)
+Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging on Diffusion MRI. MICCAI. (To be submission)
 
 
 
@@ -45,7 +45,7 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 
 - Diffusion relaxation (restricted, hindere, isotropic), estimated by ME_SMSI
 - Non-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic), estimated by ME_SMSI
-- Non-diffusion relaxation intra-voxel architecture struture
+- Non-diffusion relaxation intra-voxel architecture struture, estimated by ME_SI
 
 **Output**
 
