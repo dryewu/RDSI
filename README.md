@@ -19,7 +19,6 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 - Non-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic)
 
 
-
 ## ME_SI.m
 
 ###### Multi-echo spectrum imaging
@@ -35,6 +34,33 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 
 - Non-diffusion relaxation multi-compartment intra-voxel architecture
 
+
+## SE_SMSI.m
+
+###### Single-echo spherical mean spectrum imaging (Huynh et al., 2020)
+
+**Input**
+
+- Single-echo diffusion MRI
+- Echo times
+
+**Output**
+
+- With-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic)
+
+
+## SE_RSI.m 
+
+###### Single-echo restricted spectrum imaging (White et al., 2013)
+
+**Input**
+
+- Multi-echo diffusion MRI
+- Echo times
+
+**Output**
+
+- With-diffusion relaxation multi-compartment intra-voxel architecture
 
 
 ## ME_MICRO.m

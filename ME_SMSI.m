@@ -1,4 +1,5 @@
 function ME_SMSI(dataFolder,TE)
+% function ME_SMSI()
     %{
     ░█▀▀█ ░█▀▀▀█ ░█▀▄▀█ ░█▀▀▀ ░█▀▀▄ ▀█▀
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
@@ -61,7 +62,7 @@ function ME_SMSI(dataFolder,TE)
 
     num_restricted  = size(adc_restricted,1);  kernel_restricted = cell(length(TE),num_restricted);
     num_hindered    = size(adc_hindered,1);    kernel_hindered   = cell(length(TE),num_hindered);
-    num_isotropic   = size(adc_isotropic,1);   kernel_isotropic   = cell(length(TE),num_isotropic);
+    num_isotropic   = size(adc_isotropic,1);   kernel_isotropic  = cell(length(TE),num_isotropic);
     
     for i = 1:length(TE)
         for j = 1:num_restricted
@@ -115,12 +116,17 @@ function ME_SMSI(dataFolder,TE)
     ME_dwi_mean_array = ME_dwi_mean_array(:,ME_dwi_mean_array_ind);
 
 
-    %% optimization
+    %% optimization sum(sum of tissue-based vf) = 1;
+%     lb      = [10;10;10;zeros(num_restricted+num_hindered+num_isotropic,1)];
+%     ub      = [inf;inf;inf;ones(num_restricted+num_hindered+num_isotropic,1)];
+%     Aeq     = [zeros(3,3) blkdiag(ones(1,num_restricted),ones(1,num_hindered),ones(1,num_isotropic))];
+%     beq     = [1;1;1];
+
+    %% sum(total vf) = 1;
     lb      = [10;10;10;zeros(num_restricted+num_hindered+num_isotropic,1)];
     ub      = [inf;inf;inf;ones(num_restricted+num_hindered+num_isotropic,1)];
-    Aeq     = [zeros(3,3) blkdiag(ones(1,num_restricted),ones(1,num_hindered),ones(1,num_isotropic))];
-    beq     = [1;1;1];
-
+    Aeq     = [zeros(1,3) ones(1,num_restricted+num_hindered+num_isotropic)];
+    beq     = 1;
     options = optimoptions(@fmincon,'Display','off');
     alpha_coef = zeros(num_restricted+num_hindered+num_isotropic+3,size(ME_dwi_mean_array,2));
     alpha_init = [100;100;100;rand(num_restricted+num_hindered+num_isotropic,1)];
@@ -138,7 +144,8 @@ function ME_SMSI(dataFolder,TE)
         beta = res.x;
 
         fun = @(x)echoFunc(x,beta,TE,num_restricted,num_hindered,num_isotropic);
-        alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,ub,[],options);
+%         alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,ub,[],options);
+        alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,[],[],[],options);
     end
 
     T2r = alpha_coef(1:3,:);
@@ -152,7 +159,7 @@ function ME_SMSI(dataFolder,TE)
 
     info_t2r = ME_dwi_info{1};
     info_t2r.ImageSize = size(T2r);
-    niftiwrite(T2r,fullfile(dataFolder,'T2r.nii'),info_t2r,'Compressed', true);
+    niftiwrite(T2r,fullfile(dataFolder,'T2r_norm.nii'),info_t2r,'Compressed', true);
 
     temp2 = single(zeros(num_restricted+num_hindered+num_isotropic,length(ME_dwi_mean_array_ind)));
     temp2(:,ME_dwi_mean_array_ind) = vf;
@@ -162,10 +169,10 @@ function ME_SMSI(dataFolder,TE)
 
     info_vf= ME_dwi_info{1};
     info_vf.ImageSize = size(vf);
-    niftiwrite(vf,fullfile(dataFolder,'VF.nii'),info_vf,'Compressed', true);
+    niftiwrite(vf,fullfile(dataFolder,'VF_norm.nii'),info_vf,'Compressed', true);
 
     % save options
-    save(fullfile(dataFolder,'params.mat'),'num_restricted','adc_restricted',...
+    save(fullfile(dataFolder,'params_norm.mat'),'num_restricted','adc_restricted',...
                                            'num_hindered','adc_hindered',...
                                            'num_isotropic','adc_isotropic',...
                                             '-v7.3');
