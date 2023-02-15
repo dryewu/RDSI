@@ -2,7 +2,7 @@
 
 Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging on Diffusion MRI. MICCAI. (To be submission)
 
-
+![fig](fig.png)
 
 ## ME_SMSI.m
 
@@ -15,8 +15,8 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 
 **Output**
 
-- Diffusion relaxation (restricted, hindere, isotropic)
-- Non-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic)
+- Diffusion relaxation (restricted, hindered, isotropic)
+- Non-diffusion relaxation spectrum coefficient (restricted, hindered, isotropic)
 
 
 ## ME_SI.m
@@ -27,8 +27,8 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 
 - Multi-echo diffusion MRI
 - Echo times
-- Diffusion relaxation (restricted, hindere, isotropic), estimated by ME_SMSI
-- Non-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic), estimated by ME_SMSI
+- Diffusion relaxation (restricted, hindered, isotropic), estimated by ME_SMSI
+- Non-diffusion relaxation spectrum coefficient (restricted, hindered, isotropic), estimated by ME_SMSI
 
 **Output**
 
@@ -46,7 +46,7 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 
 **Output**
 
-- With-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic)
+- With-diffusion relaxation spectrum coefficient (restricted, hindered, isotropic)
 
 
 ## SE_RSI.m 
@@ -69,8 +69,8 @@ Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging o
 
 **Input**
 
-- Diffusion relaxation (restricted, hindere, isotropic), estimated by ME_SMSI
-- Non-diffusion relaxation spectrum coefficient (restricted, hindere, isotropic), estimated by ME_SMSI
+- Diffusion relaxation (restricted, hindered, isotropic), estimated by ME_SMSI
+- Non-diffusion relaxation spectrum coefficient (restricted, hindered, isotropic), estimated by ME_SMSI
 - Non-diffusion relaxation intra-voxel architecture struture, estimated by ME_SI
 
 **Output**
