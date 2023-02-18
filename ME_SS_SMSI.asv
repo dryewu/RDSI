@@ -94,6 +94,8 @@ function ME_SS_SMSI(dataFolder,TE,bshell)
 
 
     %% sum(total vf) = 1;
+    lb      = [10;10;10;zeros(num_restricted+num_hindered+num_isotropic,1)];
+    ub      = [inf;inf;inf;ones(num_restricted+num_hindered+num_isotropic,1)];
     Aeq     = [zeros(1,3) ones(1,num_restricted+num_hindered+num_isotropic)];
     beq     = 1;
     options = optimoptions(@fmincon,'Display','off');
@@ -113,6 +115,7 @@ function ME_SS_SMSI(dataFolder,TE,bshell)
         beta = res.x;
 
         fun = @(x)echoFunc(x,beta,TE,num_restricted,num_hindered,num_isotropic);
+%         alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,ub,[],options);
         alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,[],[],[],options);
     end
 
