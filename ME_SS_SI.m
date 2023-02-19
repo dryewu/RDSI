@@ -1,10 +1,11 @@
-function ME_SI(dataFolder,TE)
+function ME_SS_SI(dataFolder,TE,bshell)
     %{
     ░█▀▀█ ░█▀▀▀█ ░█▀▄▀█ ░█▀▀▀ ░█▀▀▄ ▀█▀
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
     Parameter estimation with multi-echo spectrum Imaging (ME-SI)
+    (ME-SMSI) on single-shell dMRI
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
@@ -17,15 +18,13 @@ function ME_SI(dataFolder,TE)
     addpath('third/osqp');
     addpath('third/csd');
     %% load multi-echo dMRI dataset
-%     dataFolder = '/home/wuye/D_disk/MTE_dMRI/XYQ/proc';
-%     TE = [75 85 95 105 115];
     fdwi    = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.nii.gz')),TE,'UniformOutput',false);
     fbvec   = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.bvec')),TE,'UniformOutput',false);
     fbval   = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.bval')),TE,'UniformOutput',false);
     fmask   = fullfile(dataFolder,'MTE_mask.nii.gz');
-    fvf     = fullfile(dataFolder,'VF_norm.nii.gz');     % estimated by ME_SMSI
-    ft2r    = fullfile(dataFolder,'T2r_norm.nii.gz');    % estimated by ME_SMSI
-    fparams = fullfile(dataFolder,'params_norm.mat');    % used in ME_SMSI
+    fvf     = fullfile(dataFolder,strcat('VF_with_b',num2str(bshell),'.nii'));     % estimated by ME_SS_SMSI
+    ft2r    = fullfile(dataFolder,strcat('T2r_with_b',num2str(bshell),'.nii'));    % estimated by ME_SS_SMSI
+    fparams = fullfile(dataFolder,strcat('param_with_b',num2str(bshell),'.mat'));    % used in ME_SS_SMSI
 
     ME_dwi_info     = cellfun(@(x)niftiinfo(x),fdwi,'UniformOutput',false);
     ME_dwi          = cellfun(@(x)niftiread(x),ME_dwi_info,'UniformOutput',false);
@@ -39,21 +38,18 @@ function ME_SI(dataFolder,TE)
     ME_t2r          = niftiread(ME_t2r_info);
     params = load(fparams);
     
-    ME_bshell       = cellfun(@(x)unique(x),ME_bval,'UniformOutput',false); 
-    clear fdwi fbvec fbval fmask fvf ft2r fparams;
-    clear ME_vf_info ME_t2r_info ME_mask_info
-
     %% Normalization S/S0
     ME_dwi_norm     = cell(size(ME_dwi));
     ME_bval_norm    = cell(size(ME_bval));
     ME_bvec_norm    = cell(size(ME_bvec));
 
     for i = 1:length(TE)
-        ind_S0 = ME_bval{i} == ME_bshell{i}(1);
-        ME_dwi_norm{i} = ME_dwi{i}(:,:,:,~ind_S0) ./ (mean(ME_dwi{i}(:,:,:,ind_S0),4)+eps);
+        ind = ME_bval{i} == bshell;
+        ind_b0 = ME_bval{i} == 0;
+        ME_dwi_norm{i} = ME_dwi{i}(:,:,:,ind) ./ (mean(ME_dwi{i}(:,:,:,ind_b0),4)+eps);
 
-        ME_bval_norm{i} = ME_bval{i}(~ind_S0,:);
-        ME_bvec_norm{i} = ME_bvec{i}(~ind_S0,:);
+        ME_bval_norm{i} = ME_bval{i}(ind,:);
+        ME_bvec_norm{i} = ME_bvec{i}(ind,:);
     end
 
     ME_dwi = ME_dwi_norm;    clear ME_dwi_norm;
@@ -81,60 +77,51 @@ function ME_SI(dataFolder,TE)
         bval    = ME_bval{i};
         bvec    = ME_bvec{i};
         bshell  = unique(bval);
-        nvol    = length(bval);
         
-        for j = 1:num_restricted
-            kernel_restricted{i,j} = zeros(nvol,nmax);
-            for k = 1:length(bshell)
-                order = floor(nsh2lmax(sum(bval==bshell(k))));
-                DW_scheme = gen_scheme(bvec(bval==bshell(k),:),order);
-                
-                R_amp = response(adc_restricted(j,1),adc_restricted(j,2),bshell(k),scheme);
-                R_SH = amp2SH(R_amp, scheme);
-                R_RH = SH2RH(R_SH);
+        for j = 1:num_restricted 
+            order = floor(nsh2lmax(sum(bval==bshell)));
+            DW_scheme = gen_scheme(bvec(bval==bshell,:),order);
+            
+            R_amp = response(adc_restricted(j,1),adc_restricted(j,2),bshell,scheme);
+            R_SH = amp2SH(R_amp, scheme);
+            R_RH = SH2RH(R_SH);
 
-                m = [];
-                for l = 0:2:order
-                    m = [ m R_RH(l/2+1)*ones(1,2*l+1) ];
-                end
-                
-                fconv = DW_scheme.sh .* m(ones(size(DW_scheme.sh,1),1),:);
-                fconv(:,end+1:nmax) = 0;
-                kernel_restricted{i,j}(bval==bshell(k),:) = fconv;
-                clear DW_scheme R_amp R_SH R_RH fconv m;
+            m = [];
+            for l = 0:2:order
+                m = [ m R_RH(l/2+1)*ones(1,2*l+1) ];
             end
+            
+            fconv = DW_scheme.sh .* m(ones(size(DW_scheme.sh,1),1),:);
+            fconv(:,end+1:nmax) = 0;
+            kernel_restricted{i,j} = fconv;
+            clear DW_scheme R_amp R_SH R_RH fconv m;
+
         end
         
         for j = 1:num_hindered
-            kernel_hindered{i,j} = zeros(nvol,nmax);
-            for k = 1:length(bshell)
-                order = floor(nsh2lmax(sum(bval==bshell(k))));
-                DW_scheme = gen_scheme(bvec(bval==bshell(k),:),order);
-                
-                R_amp = response(adc_hindered(j,1),adc_hindered(j,2),bshell(k),scheme);
-                R_SH = amp2SH(R_amp, scheme);
-                R_RH = SH2RH(R_SH);
+            order = floor(nsh2lmax(sum(bval==bshell)));
+            DW_scheme = gen_scheme(bvec(bval==bshell,:),order);
+            
+            R_amp = response(adc_hindered(j,1),adc_hindered(j,2),bshell,scheme);
+            R_SH = amp2SH(R_amp, scheme);
+            R_RH = SH2RH(R_SH);
 
-                m = [];
-                for l = 0:2:order
-                    m = [ m R_RH(l/2+1)*ones(1,2*l+1) ];
-                end
-                
-                fconv = DW_scheme.sh .* m(ones(size(DW_scheme.sh,1),1),:);
-                fconv(:,end+1:nmax) = 0;
-                kernel_hindered{i,j}(bval==bshell(k),:) = fconv;
-                clear DW_scheme R_amp R_SH R_RH fconv m;
+            m = [];
+            for l = 0:2:order
+                m = [ m R_RH(l/2+1)*ones(1,2*l+1) ];
             end
+            
+            fconv = DW_scheme.sh .* m(ones(size(DW_scheme.sh,1),1),:);
+            fconv(:,end+1:nmax) = 0;
+            kernel_hindered{i,j} = fconv;
+            clear DW_scheme R_amp R_SH R_RH fconv m;
         end
 
         for j = 1:num_isotropic
-            kernel_isotropic{i,j} = single(zeros(length(bshell),1));
-            for k = 1:length(bshell)
-                kernel_isotropic{i,j}(k,1) = exp(-bshell(k)*adc_isotropic(j)); 
-            end
+            kernel_isotropic{i,j} = exp(-bshell*adc_isotropic(j)); 
         end
     end  
-    
+
     %% Vectorization & Masked & arrayed
     ME_mask_ind = find(ME_mask>0.5);
     ME_dwi_array = cellfun(@(x)reshape(x,size(x,1)*size(x,2)*size(x,3),size(x,4)),ME_dwi,'UniformOutput',false);
@@ -147,8 +134,6 @@ function ME_SI(dataFolder,TE)
     ME_vf_array = reshape(ME_vf,size(ME_vf,1)*size(ME_vf,2)*size(ME_vf,3),num_restricted + num_hindered + num_isotropic);
     ME_vf_array = ME_vf_array(ME_mask_ind,:)';
 
-    clear params ME_dwi ME_t2r ME_vf
-
     %% remove isotropic component
     ME_vf_array = ME_vf_array./sum(ME_vf_array);
     ME_vf_array(isnan(ME_vf_array)) = 0;
@@ -160,8 +145,6 @@ function ME_SI(dataFolder,TE)
     ME_t2r_array_isotropic = ME_t2r_array(3,:);
     ME_dwi_array_anisotropic = ME_dwi_array;
 
-    clear ME_vf_array ME_t2r_array;
-
     num_start = 1;
     for i = 1:length(TE)
         num_end = num_start + length(ME_bval{i}) - 1;
@@ -171,14 +154,12 @@ function ME_SI(dataFolder,TE)
 
         for j = 1:num_isotropic
             for k = 1:length(bshell)
-                dwi(bval==bshell(k),:) = dwi(bval==bshell(k),:) - exp(-TE(i)./ME_t2r_array_isotropic).*ME_vf_array_isotropic(j,:).*kernel_isotropic{i,j}(k,1);
+                dwi(bval==bshell,:) = dwi(bval==bshell,:) - exp(-TE(i)./ME_t2r_array_isotropic).*ME_vf_array_isotropic(j,:).*kernel_isotropic{i,j}(k,1);
             end
         end
         ME_dwi_array_anisotropic(num_start:num_end,:) = dwi;
         num_start = num_end + 1;
     end
-
-    clear kernel_isotropic ME_vf_array_isotropic ME_t2r_array_isotropic
 
     %% subject to
     nv = size(scheme.vert,1);
@@ -193,33 +174,31 @@ function ME_SI(dataFolder,TE)
     A1 = [ampbasis; B*ampbasis];
     A2 = [zeros(size(ampbasis,1),1); ones(num_restricted + num_hindered,1)];
     A3 = [inf(size(ampbasis,1),1); ones(num_restricted + num_hindered,1)];
-    alpha_coef = zeros(num_restricted*nmax+num_hindered*nmax,size(ME_vf_array_restricted,2));
+    alpha_coef = zeros(num_restricted*nmax+num_hindered*nmax,size(ME_vf_array,2));
 
     ME_t2r_restricted  = exp(-TE'./ME_t2r_array_restricted);
     ME_t2r_hindered    = exp(-TE'./ME_t2r_array_hindered);
 
-    clear ampbasis ME_t2r_array_restricted ME_t2r_array_hindered B;
-
     %% optimization
-    parfor i = 1:size(ME_vf_array_restricted,2)
+    parfor i = 1:size(ME_vf_array,2)
         kernel = cell2mat([ cellfun(@(x,y) x.*y, kernel_restricted,num2cell(ME_t2r_restricted(:,i).*ME_vf_array_restricted(:,i)'), 'UniformOutput',false) ...
                             cellfun(@(x,y) x.*y, kernel_hindered,num2cell(ME_t2r_hindered(:,i).* ME_vf_array_hindered(:,i)'), 'UniformOutput',false)]);
         
         dwi = ME_dwi_array_anisotropic(:,i);
         ind = dwi > 0 & ~isnan(dwi) & ~isinf(dwi);
 
-        if sum(ind) < 45
+        if sum(ind) < 25
             continue;
         end
 
         try
-        H = double(kernel(ind,:)'*kernel(ind,:));
-        f = -double(kernel(ind,:)'*dwi(ind,1));
-
-        prob = osqp;
-        prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
-        res = prob.solve();
-        alpha_coef(:,i) = res.x;
+            H = double(kernel(ind,:)'*kernel(ind,:));
+            f = -double(kernel(ind,:)'*dwi(ind,1));
+    
+            prob = osqp;
+            prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
+            res = prob.solve();
+            alpha_coef(:,i) = res.x;
         catch
             continue;
         end
