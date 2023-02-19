@@ -187,18 +187,18 @@ function ME_SS_SI(dataFolder,TE,bshell)
         dwi = ME_dwi_array_anisotropic(:,i);
         ind = dwi > 0 & ~isnan(dwi) & ~isinf(dwi);
 
-        if sum(ind) < 45
+        if sum(ind) < 25
             continue;
         end
 
         try
-        H = double(kernel(ind,:)'*kernel(ind,:));
-        f = -double(kernel(ind,:)'*dwi(ind,1));
-
-        prob = osqp;
-        prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
-        res = prob.solve();
-        alpha_coef(:,i) = res.x;
+            H = double(kernel(ind,:)'*kernel(ind,:));
+            f = -double(kernel(ind,:)'*dwi(ind,1));
+    
+            prob = osqp;
+            prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
+            res = prob.solve();
+            alpha_coef(:,i) = res.x;
         catch
             continue;
         end

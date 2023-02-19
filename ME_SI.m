@@ -40,6 +40,8 @@ function ME_SI(dataFolder,TE)
     params = load(fparams);
     
     ME_bshell       = cellfun(@(x)unique(x),ME_bval,'UniformOutput',false); 
+    clear fdwi fbvec fbval fmask fvf ft2r fparams;
+    clear ME_vf_info ME_t2r_info ME_mask_info
 
     %% Normalization S/S0
     ME_dwi_norm     = cell(size(ME_dwi));
@@ -132,7 +134,7 @@ function ME_SI(dataFolder,TE)
             end
         end
     end  
-
+    
     %% Vectorization & Masked & arrayed
     ME_mask_ind = find(ME_mask>0.5);
     ME_dwi_array = cellfun(@(x)reshape(x,size(x,1)*size(x,2)*size(x,3),size(x,4)),ME_dwi,'UniformOutput',false);
@@ -145,6 +147,8 @@ function ME_SI(dataFolder,TE)
     ME_vf_array = reshape(ME_vf,size(ME_vf,1)*size(ME_vf,2)*size(ME_vf,3),num_restricted + num_hindered + num_isotropic);
     ME_vf_array = ME_vf_array(ME_mask_ind,:)';
 
+    clear params ME_dwi ME_t2r ME_vf
+
     %% remove isotropic component
     ME_vf_array = ME_vf_array./sum(ME_vf_array);
     ME_vf_array(isnan(ME_vf_array)) = 0;
@@ -155,6 +159,8 @@ function ME_SI(dataFolder,TE)
     ME_t2r_array_hindered = ME_t2r_array(2,:);
     ME_t2r_array_isotropic = ME_t2r_array(3,:);
     ME_dwi_array_anisotropic = ME_dwi_array;
+
+    clear ME_vf_array ME_t2r_array;
 
     num_start = 1;
     for i = 1:length(TE)
@@ -172,6 +178,8 @@ function ME_SI(dataFolder,TE)
         num_start = num_end + 1;
     end
 
+    clear kernel_isotropic ME_vf_array_isotropic ME_t2r_array_isotropic
+
     %% subject to
     nv = size(scheme.vert,1);
     ampbasis = repmat(scheme.sh,1,num_restricted + num_hindered);
@@ -185,13 +193,15 @@ function ME_SI(dataFolder,TE)
     A1 = [ampbasis; B*ampbasis];
     A2 = [zeros(size(ampbasis,1),1); ones(num_restricted + num_hindered,1)];
     A3 = [inf(size(ampbasis,1),1); ones(num_restricted + num_hindered,1)];
-    alpha_coef = zeros(num_restricted*nmax+num_hindered*nmax,size(ME_vf_array,2));
+    alpha_coef = zeros(num_restricted*nmax+num_hindered*nmax,size(ME_vf_array_restricted,2));
 
     ME_t2r_restricted  = exp(-TE'./ME_t2r_array_restricted);
     ME_t2r_hindered    = exp(-TE'./ME_t2r_array_hindered);
 
+    clear ampbasis ME_t2r_array_restricted ME_t2r_array_hindered B;
+
     %% optimization
-    parfor i = 1:size(ME_vf_array,2)
+    parfor i = 1:size(ME_vf_array_restricted,2)
         kernel = cell2mat([ cellfun(@(x,y) x.*y, kernel_restricted,num2cell(ME_t2r_restricted(:,i).*ME_vf_array_restricted(:,i)'), 'UniformOutput',false) ...
                             cellfun(@(x,y) x.*y, kernel_hindered,num2cell(ME_t2r_hindered(:,i).* ME_vf_array_hindered(:,i)'), 'UniformOutput',false)]);
         
