@@ -19,7 +19,7 @@ function ME_SS_SMSI(dataFolder,TE,bshell)
     %% load multi-echo dMRI dataset
     fdwi    = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.nii.gz')),TE,'UniformOutput',false);
     fbval   = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.bval')),TE,'UniformOutput',false);
-    fmask   = fullfile(dataFolder,'MTE_mask.nii.gz');
+    fmask   = fullfile(dataFolder,'MTE_mask_ROI.nii.gz');
 
     ME_dwi_info     = cellfun(@(x)niftiinfo(x),fdwi,'UniformOutput',false);
     ME_dwi          = cellfun(@(x)niftiread(x),ME_dwi_info,'UniformOutput',false);
