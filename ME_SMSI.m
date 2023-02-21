@@ -1,11 +1,11 @@
-function ME_SMSI(dataFolder,TE)
+function ME_SMSI(dataFolder,TE, options)
 % function ME_SMSI()
     %{
     ░█▀▀█ ░█▀▀▀█ ░█▀▄▀█ ░█▀▀▀ ░█▀▀▄ ▀█▀
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Parameter estimation with multi-echo spherical mean spectrum Imaging (ME-SMSI)
+    Multi-echo spherical mean spectrum Imaging (ME-SMSI)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
@@ -15,10 +15,21 @@ function ME_SMSI(dataFolder,TE)
         
     %}
     
+    arguments
+        dataFolder              string   {mustBeFolder}
+        TE                      (1,:)    {mustBeNumeric}
+        
+        options.normalizeToS0   (1,1)    {mustBeNumericOrLogical} = true
+        options.useBshell       (1,:)    {mustBeNumericOrLogical} = false
+        options.adc_restricted  (2,:)    {mustBeNumericOrLogical} = false
+        options.adc_hindered    (2,:)    {mustBeNumericOrLogical} = false
+        options.adc_isotropic   (1,:)    {mustBeNumericOrLogical} = false
+        options.core            (1,1)    {mustBeInteger,mustBeNonnegative} = 0
+    end
+
     addpath('third/osqp');
+    addpath('scheme');
     %% load multi-echo dMRI dataset
-%     dataFolder = '/home/wuye/D_disk/MTE_dMRI/XYQ/proc';
-%     TE = [75 85 95 105 115];
     fdwi    = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.nii.gz')),TE,'UniformOutput',false);
     fbval   = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.bval')),TE,'UniformOutput',false);
     fmask   = fullfile(dataFolder,'MTE_mask.nii.gz');
@@ -28,36 +39,43 @@ function ME_SMSI(dataFolder,TE)
     ME_bval         = cellfun(@(x)round(importdata(x)'/100)*100,fbval,'UniformOutput',false); 
     ME_mask_info    = niftiinfo(fmask);
     ME_mask         = round(niftiread(ME_mask_info));
-    
+    clear ind fdwi fbval fmask ME_mask_info;
+
+    if options.useBshell
+        ind         = cellfun(@(x)find(ismember(x,options.useBshell)),fbval,'UniformOutput',false); 
+        ME_dwi      = cellfun(@(x,y)x(:,:,:,y),ME_dwi,ind,'UniformOutput',false);
+        ME_bval     = cellfun(@(x,y)x(y),ME_bval,ind,'UniformOutput',false); 
+        clear ind
+    end
+
     ME_bshell       = cellfun(@(x)unique(x),ME_bval,'UniformOutput',false); 
     ME_dwi_mean     = cell(size(ME_dwi));
     for i = 1:length(TE)
         ME_dwi_mean{i} = single(zeros([size(ME_dwi{i},[1,2,3]),length(ME_bshell{i})]));
         for j = 1:length(ME_bshell{i})
-            ind = find(ME_bval{i} == ME_bshell{i}(j));
+            ind = ME_bval{i} == ME_bshell{i}(j);
             ME_dwi_mean{i}(:,:,:,j) = mean(ME_dwi{i}(:,:,:,ind),4);
         end
     end
 
     %% Normalization S/S0
-    ME_dwi_mean = cellfun(@(x)x(:,:,:,2:end)./(x(:,:,:,1)+eps),ME_dwi_mean,'UniformOutput',false);
-    ME_bshell   = cellfun(@(x)x(2:end),ME_bshell,'UniformOutput',false);
+    if options.normalizeToS0
+        ME_dwi_mean = cellfun(@(x)x(:,:,:,2:end)./(x(:,:,:,1)+eps),ME_dwi_mean,'UniformOutput',false);
+        ME_bshell   = cellfun(@(x)x(2:end),ME_bshell,'UniformOutput',false);
+    end
 
     %% kernel
-    adc_restricted = [];
-    adc_hindered = [];
-    adc_isotropic = (0 : 0.1e-3 : 3e-3)';
+    default_spectrum = load('default_spectrum.mat');
+    if ~options.adc_restricted
+        adc_restricted = default_spectrum.adc_restricted;
+    end
 
-    for adc_long_diff = 0.5e-3 : 0.1e-3 : 1.5e-3
-        for adc_trans_diff = 0e-3 : 0.1e-3 : 0.9e-3
-            if adc_long_diff > adc_trans_diff * (pi/2)
-                if adc_long_diff / adc_trans_diff >= (pi/2)^2
-                    adc_restricted = [adc_restricted; adc_long_diff adc_trans_diff];
-                else
-                    adc_hindered = [adc_hindered; adc_long_diff adc_trans_diff];
-                end
-            end
-        end
+    if ~options.adc_hindered
+        adc_hindered = default_spectrum.adc_hindered;
+    end
+
+    if ~options.adc_isotropic
+        adc_isotropic = default_spectrum.adc_isotropic;
     end
 
     num_restricted  = size(adc_restricted,1);  kernel_restricted = cell(length(TE),num_restricted);
