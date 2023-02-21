@@ -89,6 +89,7 @@ function ME_SS_SMSI(dataFolder,TE,bshell)
     %% Vectorization & Masked & arrayed
     ME_mask_ind = find(ME_mask>0.5);
     ME_dwi_mean_array = reshape(ME_dwi_mean,size(ME_dwi_mean,1)*size(ME_dwi_mean,2)*size(ME_dwi_mean,3),length(TE))';
+    ME_dwi_mean_array = ME_dwi_mean_array(:,ME_mask_ind);
     ME_dwi_mean_array_ind = all(ME_dwi_mean_array);
     ME_dwi_mean_array = ME_dwi_mean_array(:,ME_dwi_mean_array_ind);
 
