@@ -1,8 +1,7 @@
 # Multi-echo Spectrum Imaging on Diffusion MRI
 
-Wu, Y., Liu, X.M., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging on Diffusion MRI. MICCAI. (To be submission)
+Wu, Y., Liu, X.M., Zhang, X.Y., Huynh, K.H., Ahmad, S., & Yap, P. T. (2023). Multi-echo Spectrum Imaging on Diffusion MRI. MICCAI. (Submitted)
 
-![fig](fig.png)
 
 ## ME_SMSI.m
 

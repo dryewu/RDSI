@@ -1,4 +1,5 @@
-function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
+function ME_SMSI(dataFolder,TE, options)
+% function ME_SMSI()
     %{
     ░█▀▀█ ░█▀▀▀█ ░█▀▄▀█ ░█▀▀▀ ░█▀▀▄ ▀█▀
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
@@ -15,26 +16,24 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     %}
     
     arguments
-        fdwi                    (1,:)    {mustBeNonzeroLengthText}
-        fbval                   (1,:)    {mustBeNonzeroLengthText}
-        fmask                   string   {mustBeFile}
+        dataFolder              string   {mustBeFolder}
         TE                      (1,:)    {mustBeNumeric}
-        outpath                 string   {mustBeNonzeroLengthText}
-
+        
         options.normalizeToS0   (1,1)    {mustBeNumericOrLogical} = true
         options.useBshell       (1,:)    {mustBeNumericOrLogical} = false
-        options.spectrum        string   {mustBeFolder} = 'scheme/default_spectrum.mat'
+        options.adc_restricted  (2,:)    {mustBeNumericOrLogical} = false
+        options.adc_hindered    (2,:)    {mustBeNumericOrLogical} = false
+        options.adc_isotropic   (1,:)    {mustBeNumericOrLogical} = false
+        options.core            (1,1)    {mustBeInteger,mustBeNonnegative} = 0
     end
 
     addpath('third/osqp');
     addpath('scheme');
-
-    cellfun(@(x)assert(exist(x,'file'),'Input DWI %s does not exist', x),fdwi,'UniformOutput',false);
-    cellfun(@(x)assert(exist(x,'file'),'Input Bval %s does not exist', x),fbval,'UniformOutput',false);
-    assert(exist(fmask,'file'),'Input mask %s does not exist', fmask);
-    assert(exist(options.spectrum,'file'),'Input spectrum %s does not exist', options.spectrum);
-
     %% load multi-echo dMRI dataset
+    fdwi    = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.nii.gz')),TE,'UniformOutput',false);
+    fbval   = arrayfun(@(x)fullfile(dataFolder,strcat('MTE_',num2str(x),'_align_center_denoise_unring_preproc_epi_unbiased2_in_T1.bval')),TE,'UniformOutput',false);
+    fmask   = fullfile(dataFolder,'MTE_mask.nii.gz');
+
     ME_dwi_info     = cellfun(@(x)niftiinfo(x),fdwi,'UniformOutput',false);
     ME_dwi          = cellfun(@(x)niftiread(x),ME_dwi_info,'UniformOutput',false);
     ME_bval         = cellfun(@(x)round(importdata(x)'/100)*100,fbval,'UniformOutput',false); 
@@ -66,21 +65,23 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     end
 
     %% kernel
-    default_spectrum = load(options.spectrum);
+    default_spectrum = load('default_spectrum.mat');
+    if ~options.adc_restricted
+        adc_restricted = default_spectrum.adc_restricted;
+    end
 
-    adc_restricted   = default_spectrum.adc_restricted;
-    adc_hindered     = default_spectrum.adc_hindered;
-    adc_isotropic    = default_spectrum.adc_isotropic;
+    if ~options.adc_hindered
+        adc_hindered = default_spectrum.adc_hindered;
+    end
 
-    num_restricted  = size(adc_restricted,1);  
-    num_hindered    = size(adc_hindered,1);    
-    num_isotropic   = size(adc_isotropic,1);   
+    if ~options.adc_isotropic
+        adc_isotropic = default_spectrum.adc_isotropic;
+    end
+
+    num_restricted  = size(adc_restricted,1);  kernel_restricted = cell(length(TE),num_restricted);
+    num_hindered    = size(adc_hindered,1);    kernel_hindered   = cell(length(TE),num_hindered);
+    num_isotropic   = size(adc_isotropic,1);   kernel_isotropic  = cell(length(TE),num_isotropic);
     
-    kernel_restricted = cell(length(TE),num_restricted);
-    kernel_hindered   = cell(length(TE),num_hindered);
-    kernel_isotropic  = cell(length(TE),num_isotropic);
-
-
     for i = 1:length(TE)
         for j = 1:num_restricted
             kernel_restricted{i,j} = single(zeros(length(ME_bshell{i}),1));
@@ -131,111 +132,68 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     ME_dwi_mean_array = cell2mat(ME_dwi_mean_array');
     ME_dwi_mean_array_ind = all(ME_dwi_mean_array);
     ME_dwi_mean_array = ME_dwi_mean_array(:,ME_dwi_mean_array_ind);
-    clear ME_dwi_mean
 
-    %% sum(total vf) = 1 if normalizeToS0 is true
-    
-    if options.normalizeToS0
-        Aeq     = [zeros(1,3) ones(1,num_restricted+num_hindered+num_isotropic)];
-        beq     = 1;
-    else
-        Aeq     = [];
-        beq     = [];
-    end
-        lb      = [0;0;0;zeros(num_restricted+num_hindered+num_isotropic,1)];    
 
+    %% optimization sum(sum of tissue-based vf) = 1;
+%     lb      = [10;10;10;zeros(num_restricted+num_hindered+num_isotropic,1)];
+%     ub      = [inf;inf;inf;ones(num_restricted+num_hindered+num_isotropic,1)];
+%     Aeq     = [zeros(3,3) blkdiag(ones(1,num_restricted),ones(1,num_hindered),ones(1,num_isotropic))];
+%     beq     = [1;1;1];
+
+    %% sum(total vf) = 1;
+    lb      = [10;10;10;zeros(num_restricted+num_hindered+num_isotropic,1)];
+    ub      = [inf;inf;inf;ones(num_restricted+num_hindered+num_isotropic,1)];
+    Aeq     = [zeros(1,3) ones(1,num_restricted+num_hindered+num_isotropic)];
+    beq     = 1;
     options = optimoptions(@fmincon,'Display','off');
     alpha_coef = zeros(num_restricted+num_hindered+num_isotropic+3,size(ME_dwi_mean_array,2));
     alpha_init = [100;100;100;rand(num_restricted+num_hindered+num_isotropic,1)];
 
-    H   = double(blk_kernel'*blk_kernel);
-    K   = double(-blk_kernel'*ME_dwi_mean_array);
-    A1  = diag(ones(size(blk_kernel,2),1));
-    A2  = zeros(size(blk_kernel,2),1);
-    A3  = ones(size(blk_kernel,2),1);
-    clear blk_kernel;
-
-    %% optimization
+    H = double(blk_kernel'*blk_kernel);
+    A1 = diag(ones(size(blk_kernel,2),1));
+    A2 = zeros(size(blk_kernel,2),1);
+    A3 = ones(size(blk_kernel,2),1);
     parfor i = 1:size(ME_dwi_mean_array,2)
         
-        f = K(:,i);
+        f = -double(blk_kernel'*ME_dwi_mean_array(:,i));
         prob = osqp;
         prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
         res = prob.solve();
-        fun = @(x)echoFunc(x,res.x,TE,num_restricted,num_hindered,num_isotropic);
-        alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,[],[],options);
-    end
-    
-    %% save results
-    if ~exist(outpath,'folder')
-        mkdir('outpath')
+        beta = res.x;
+
+        fun = @(x)echoFunc(x,beta,TE,num_restricted,num_hindered,num_isotropic);
+%         alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,lb,ub,[],options);
+        alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,[],[],[],options);
     end
 
-    % save T2 restricted
-    temp2 = single(zeros(1,length(ME_dwi_mean_array_ind)));
-    temp2(:,ME_dwi_mean_array_ind) = alpha_coef(1,:);
-    temp = single(zeros(1,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
+    T2r = alpha_coef(1:3,:);
+    vf = alpha_coef(4:end,:);
+
+    temp2 = single(zeros(3,length(ME_dwi_mean_array_ind)));
+    temp2(:,ME_dwi_mean_array_ind) = T2r;
+    temp = single(zeros(3,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
     temp(:,ME_mask_ind) = temp2;
-    T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),1);
+    T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),3);
 
     info_t2r = ME_dwi_info{1};
     info_t2r.ImageSize = size(T2r);
-    niftiwrite(T2r,fullfile(outpath,'T2_restricted.nii'),info_t2r,'Compressed', true);
+    niftiwrite(T2r,fullfile(dataFolder,'T2r_norm.nii'),info_t2r,'Compressed', true);
 
-    % save T2 hindered
-    temp2 = single(zeros(1,length(ME_dwi_mean_array_ind)));
-    temp2(:,ME_dwi_mean_array_ind) = alpha_coef(2,:);
-    temp = single(zeros(1,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
+    temp2 = single(zeros(num_restricted+num_hindered+num_isotropic,length(ME_dwi_mean_array_ind)));
+    temp2(:,ME_dwi_mean_array_ind) = vf;
+    temp = single(zeros(num_restricted+num_hindered+num_isotropic,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
     temp(:,ME_mask_ind) = temp2;
-    T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),1);
-
-    info_t2r = ME_dwi_info{1};
-    info_t2r.ImageSize = size(T2r);
-    niftiwrite(T2r,fullfile(outpath,'T2_hindered.nii'),info_t2r,'Compressed', true);
-
-    % save T2 free water
-    temp2 = single(zeros(1,length(ME_dwi_mean_array_ind)));
-    temp2(:,ME_dwi_mean_array_ind) = alpha_coef(3,:);
-    temp = single(zeros(1,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
-    temp(:,ME_mask_ind) = temp2;
-    T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),1);
-
-    info_t2r = ME_dwi_info{1};
-    info_t2r.ImageSize = size(T2r);
-    niftiwrite(T2r,fullfile(outpath,'T2_free.nii'),info_t2r,'Compressed', true);
-
-    % save VF restricted
-    temp2 = single(zeros(num_restricted,length(ME_dwi_mean_array_ind)));
-    temp2(:,ME_dwi_mean_array_ind) = alpha_coef(4:3+num_restricted,:);
-    temp = single(zeros(num_restricted,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
-    temp(:,ME_mask_ind) = temp2;
-    vf = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),num_restricted);
+    vf = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),num_restricted+num_hindered+num_isotropic);
 
     info_vf= ME_dwi_info{1};
     info_vf.ImageSize = size(vf);
-    niftiwrite(vf,fullfile(outpath,'VF_restricted.nii'),info_vf,'Compressed', true);
+    niftiwrite(vf,fullfile(dataFolder,'VF_norm.nii'),info_vf,'Compressed', true);
 
-    % save VF hindered
-    temp2 = single(zeros(num_hindered,length(ME_dwi_mean_array_ind)));
-    temp2(:,ME_dwi_mean_array_ind) = alpha_coef(4+num_restricted:3+num_restricted+num_hindered,:);
-    temp = single(zeros(num_hindered,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
-    temp(:,ME_mask_ind) = temp2;
-    vf = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),num_hindered);
-
-    info_vf= ME_dwi_info{1};
-    info_vf.ImageSize = size(vf);
-    niftiwrite(vf,fullfile(outpath,'VF_hindered.nii'),info_vf,'Compressed', true);
-
-    % save VF free water
-    temp2 = single(zeros(num_isotropic,length(ME_dwi_mean_array_ind)));
-    temp2(:,ME_dwi_mean_array_ind) = alpha_coef(4+num_restricted+num_hindered:num_restricted+num_hindered+num_isotropic,:);
-    temp = single(zeros(num_isotropic,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
-    temp(:,ME_mask_ind) = temp2;
-    vf = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),num_isotropic);
-
-    info_vf= ME_dwi_info{1};
-    info_vf.ImageSize = size(vf);
-    niftiwrite(vf,fullfile(outpath,'VF_isotropic.nii'),info_vf,'Compressed', true);
+    % save options
+    save(fullfile(dataFolder,'params_norm.mat'),'num_restricted','adc_restricted',...
+                                           'num_hindered','adc_hindered',...
+                                           'num_isotropic','adc_isotropic',...
+                                            '-v7.3');
 end
 
 function FF = echoFunc(x,alpha,TE,num_restricted,num_hindered,num_isotropic)
@@ -264,3 +222,23 @@ function FF = echoFunc(x,alpha,TE,num_restricted,num_hindered,num_isotropic)
 
     FF = norm(F);
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

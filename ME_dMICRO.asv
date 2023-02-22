@@ -1,10 +1,10 @@
-function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
+function ME_dMICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
     %{
     ░█▀▀█ ░█▀▀▀█ ░█▀▄▀█ ░█▀▀▀ ░█▀▀▄ ▀█▀
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Microstructure parameter estimation
+    Directional microstructure parameter estimation
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
@@ -15,9 +15,9 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
     %}
 
     arguments
-        F_restricted            string   {mustBeNonzeroLengthText} = false  % [x,y,z,num_restricted]
-        F_hindered              string   {mustBeNonzeroLengthText} = false  % [x,y,z,num_indered]
-        F_isotropic             string   {mustBeNonzeroLengthText} = false  % [x,y,z,num_isotropic]
+        F_restricted            (1,:)    {mustBeNonzeroLengthText} = false  % [x,y,z,num_restricted*nsh]
+        F_hindered              (1,:)    {mustBeNonzeroLengthText} = false  % [x,y,z,num_indered*nsh]
+        F_isotropic             string   {mustBeNonzeroLengthText} = false  % [x,y,z,num_isotropic*nsh]
         fmask                   string   {mustBeFile}              = false           
         outpath                 string   {mustBeNonzeroLengthText} = false
 
@@ -28,14 +28,14 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
         options.spectrum        string   {mustBeFolder} = 'scheme/default_spectrum.mat'
     end
 
-    ME_F_restricted_info   = niftiinfo(F_restricted);
-    ME_F_hindered_info     = niftiinfo(F_hindered);
-    ME_F_isotropic_info    = niftiinfo(F_isotropic);
+    ME_F_restricted_info   = cellfun(@(x)niftiinfo(x),F_restricted,'UniformOutput',false);
+    ME_F_hindered_info     = cellfun(@(x)niftiinfo(x),F_hindered,'UniformOutput',false);
+    ME_F_isotropic_info    = cellfun(@(x)niftiinfo(x),F_isotropic,'UniformOutput',false);
     ME_mask_info           = niftiinfo(fmask);
 
-    ME_F_restricted        = niftiread(ME_F_restricted_info);
-    ME_F_hindered          = niftiread(ME_F_hindered_info);
-    ME_F_isotropic         = niftiread(ME_F_isotropic_info);
+    ME_F_restricted        = cellfun(@(x)niftiread(x),ME_F_restricted_info,'UniformOutput',false);
+    ME_F_hindered          = cellfun(@(x)niftiread(x),ME_F_hindered_info,'UniformOutput',false);
+    ME_F_isotropic         = cellfun(@(x)niftiread(x),ME_F_isotropic_info,'UniformOutput',false);
     ME_mask                = round(niftiread(ME_mask_info));
 
 
@@ -67,23 +67,28 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
 
     %% WOT: without T2
     % Anisotropic VF
-    WOT_AVF = sum(ME_F_restricted+ME_F_hindered,4);
+    WOT_AVF = sum(cat(5,ME_F_restricted{:}),5) + sum(cat(5,ME_F_hindered{:}),5);
 
     % Intra-cellular VF 
-    WOT_ICVF = sum(ME_F_restricted,4) ./ WOT_AVF;
+    WOT_ICVF = sum(cat(5,ME_F_restricted{:}),5) ./ WOT_AVF;
 
     % Extra-cellular VF 
-    WOT_ECVF = sum(ME_F_hindered,4) ./ WOT_AVF;
+    WOT_ECVF = sum(cat(5,ME_F_hindered{:}),5) ./ WOT_AVF;
 
     % Isotropic VF
     WOT_IVF = sum(ME_F_isotropic,4);
 
     % Microscopic AD
-    ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
-    WOT_uAD = sum(ME_vf.*[adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)]',4) ./ sum(ME_vf,4);
+
+    sum(cat(5,cellfun(@(x,y) x.*y,ME_F_restricted,adc_restricted, 'UniformOutput',false){:}),5)
+
+
+cellfun(@(x,y) x.*y, kernel_hindered,num2cell(ME_t2r_hindered(:,i).* ME_vf_array_hindered(:,i)'), 'UniformOutput',false)]);
+
+    WOT_uAD = sum(ME_vf.*[adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)]',4) ./ (WOT_AVF + WOT_IVF);
 
     % Microscopic RD
-    WOT_uRD = sum(ME_vf.*[adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,2)]',4) ./ sum(ME_vf,4);
+    WOT_uRD = sum(ME_vf.*[adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,2)]',4) ./ (WOT_AVF + WOT_IVF);
 
     % Microscopic MD
     WOT_uMD = (WOT_uAD + WOT_uRD * 2) ./ 3;
@@ -92,16 +97,16 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
     WOT_uFA = (WOT_uAD - WOT_uRD) ./ sqrt(WOT_uAD.^2 + 2*WOT_uRD.^2);
 
     % Intra-cellular AD
-    WOT_uICAD = sum(ME_F_restricted.*adc_restricted(:,1)',4) ./ sum(ME_F_restricted,4);
+    WOT_uICAD = sum(ME_F_restricted.*adc_restricted(:,1)',4) ./ sum(cat(5,ME_F_restricted{:}),5);
     
     % Intra-cellular RD
-    WOT_uICRD = sum(ME_F_restricted.*adc_restricted(:,2)',4) ./ sum(ME_F_restricted,4);
+    WOT_uICRD = sum(ME_F_restricted.*adc_restricted(:,2)',4) ./ sum(cat(5,ME_F_restricted{:}),5);
     
     % Extra-cellular AD
-    WOT_uECAD = sum(ME_F_hindered.*adc_hindered(:,1)',4) ./ sum(ME_F_hindered,4);
+    WOT_uECAD = sum(ME_F_hindered.*adc_hindered(:,1)',4) ./ sum(cat(5,ME_F_hindered{:}),5);
     
     % Extra-cellular RD
-    WOT_uECRD = sum(ME_F_hindered.*adc_hindered(:,2)',4) ./ sum(ME_F_hindered,4);
+    WOT_uECRD = sum(ME_F_hindered.*adc_hindered(:,2)',4) ./ sum(cat(5,ME_F_hindered{:}),5);
        
     % Microscopic sphericity
     WOT_uCS= WOT_uRD./WOT_uAD;
@@ -176,19 +181,19 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
         WT_AVF = sum(ME_F_restricted+ME_F_hindered,4);
     
         % Intra-cellular VF 
-        WT_ICVF = sum(ME_F_restricted,4) ./ WT_AVF;
+        WT_ICVF = sum(cat(5,ME_F_restricted{:}),5) ./ WT_AVF;
     
         % Extra-cellular VF 
-        WT_ECVF = sum(ME_F_hindered,4) ./ WT_AVF;
+        WT_ECVF = sum(cat(5,ME_F_hindered{:}),5) ./ WT_AVF;
     
         % Isotropic VF
         WT_IVF = sum(ME_F_isotropic,4);
     
         % Microscopic AD
-        WT_uAD = sum(ME_vf.*[adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)]',4) ./ sum(ME_vf,4);
+        WT_uAD = sum(ME_vf.*[adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)]',4) ./ (WOT_AVF + WOT_IVF);
     
         % Microscopic RD
-        WT_uRD = sum(ME_vf.*[adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,2)]',4) ./ sum(ME_vf,4);
+        WT_uRD = sum(ME_vf.*[adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,2)]',4) ./ (WOT_AVF + WOT_IVF);
     
         % Microscopic MD
         WT_uMD = (WT_uAD + WT_uRD * 2) ./ 3;
@@ -197,16 +202,16 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
         WT_uFA = (WT_uAD - WT_uRD) ./ sqrt(WT_uAD.^2 + 2*WT_uRD.^2);
     
         % Intra-cellular AD
-        WT_uICAD = sum(ME_F_restricted.*adc_restricted(:,1)',4) ./ sum(ME_F_restricted,4);
+        WT_uICAD = sum(ME_F_restricted.*adc_restricted(:,1)',4) ./ sum(cat(5,ME_F_restricted{:}),5);
         
         % Intra-cellular RD
-        WT_uICRD = sum(ME_F_restricted.*adc_restricted(:,2)',4) ./ sum(ME_F_restricted,4);
+        WT_uICRD = sum(ME_F_restricted.*adc_restricted(:,2)',4) ./ sum(cat(5,ME_F_restricted{:}),5);
         
         % Extra-cellular AD
-        WT_uECAD = sum(ME_F_hindered.*adc_hindered(:,1)',4) ./ sum(ME_F_hindered,4);
+        WT_uECAD = sum(ME_F_hindered.*adc_hindered(:,1)',4) ./ sum(cat(5,ME_F_hindered{:}),5);
         
         % Extra-cellular RD
-        WT_uECRD = sum(ME_F_hindered.*adc_hindered(:,2)',4) ./ sum(ME_F_hindered,4);
+        WT_uECRD = sum(ME_F_hindered.*adc_hindered(:,2)',4) ./ sum(cat(5,ME_F_hindered{:}),5);
            
         % Microscopic sphericity
         WT_uCS= WT_uRD./WT_uAD;
@@ -240,6 +245,10 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
     end
 end
 
+
+function nsh = lmax2nsh(lmax)
+    nsh = (lmax+1) * (lmax+2) / 2;
+end
 
 
 
