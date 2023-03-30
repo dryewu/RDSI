@@ -112,22 +112,24 @@ function SE_SMSI(fdwi,fbval,fmask,outpath,options)
 
     %% sum(total vf) = 1 if normalizeToS0 is true
     alpha_coef = zeros(num_restricted+num_hindered+num_isotropic,size(SE_dwi_mean_array,2));
+    alpha_nmse = zeros(1,size(SE_dwi_mean_array,2));
 
     H   = double(blk_kernel'*blk_kernel);
     K   = double(-blk_kernel'*SE_dwi_mean_array);
     A1  = [diag(ones(size(blk_kernel,2),1)); ones(1,size(blk_kernel,2))];
     A2  = [zeros(size(blk_kernel,2),1);1];
     A3  = [ones(size(blk_kernel,2),1);1];
-    clear blk_kernel;
 
     %% optimization
     parfor i = 1:size(SE_dwi_mean_array,2)
         
         f = K(:,i);
+        S = SE_dwi_mean_array(:,i);
         prob = osqp;
         prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
         res = prob.solve();
         alpha_coef(:,i) = res.x;
+        alpha_nmse(1,i) = norm(blk_kernel * res.x - S) ./ norm(S);
     end
     
     %% save results
@@ -145,6 +147,7 @@ function SE_SMSI(fdwi,fbval,fmask,outpath,options)
     info_vf= SE_dwi_info;
     info_vf.Datatype = 'single';
     info_vf.ImageSize = size(vf);
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
     niftiwrite(vf,fullfile(outpath,'VF_restricted.nii'),info_vf,'Compressed', true);
 
     % save VF hindered
@@ -157,6 +160,8 @@ function SE_SMSI(fdwi,fbval,fmask,outpath,options)
     info_vf= SE_dwi_info;
     info_vf.Datatype = 'single';
     info_vf.ImageSize = size(vf);
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
     niftiwrite(vf,fullfile(outpath,'VF_hindered.nii'),info_vf,'Compressed', true);
 
     % save VF free water
@@ -169,5 +174,19 @@ function SE_SMSI(fdwi,fbval,fmask,outpath,options)
     info_vf= SE_dwi_info;
     info_vf.Datatype = 'single';
     info_vf.ImageSize = size(vf);
-    niftiwrite(vf,fullfile(outpath,'VF_isotropic.nii'),info_vf,'Compressed', true);
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
+    niftiwrite(vf,fullfile(outpath,'VF_free.nii'),info_vf,'Compressed', true);
+
+    % save NMSE
+    temp2 = single(zeros(1,length(SE_dwi_mean_array_ind)));
+    temp2(:,SE_dwi_mean_array_ind) = alpha_nmse;
+    temp = single(zeros(1,size(SE_mask,1)*size(SE_mask,2)*size(SE_mask,3)));
+    temp(:,SE_mask_ind) = temp2;
+    vf = reshape(temp',size(SE_mask,1),size(SE_mask,2),size(SE_mask,3));
+
+    info_vf= SE_dwi_info;
+    info_vf.Datatype = 'single';
+    info_vf.ImageSize = size(vf);
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
+    niftiwrite(vf,fullfile(outpath,'NMSE.nii'),info_vf,'Compressed', true);
 end

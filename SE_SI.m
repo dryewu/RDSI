@@ -197,7 +197,7 @@ function SE_SI(fdwi,fbvec,fbval,fmask,outpath,options)
     temp = single(zeros(num_isotropic,size(SE_mask,1)*size(SE_mask,2)*size(SE_mask,3)));
     info_fod.Datatype = 'single';
     info_fod.ImageSize(4) = num_isotropic;
-    temp(:,SE_mask_ind) = alpha_coef(1+(num_restricted+num_hindered)*nmax,:)/sqrt(4*pi);
+    temp(:,SE_mask_ind) = alpha_coef(1+(num_restricted+num_hindered)*nmax:end,:)/sqrt(4*pi);
     fod = reshape(temp',size(SE_mask,1),size(SE_mask,2),size(SE_mask,3),num_isotropic);
 
     niftiwrite(fod,fullfile(outpath,'FOD_free.nii'),info_fod,'Compressed', true);

@@ -25,6 +25,7 @@ function ME_SI(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
 
         options.normalizeToS0   (1,1)    {mustBeNumericOrLogical} = true
         options.useBshell       (1,:)    {mustBeNumericOrLogical} = false
+        options.lmax            (1,1)    {mustBeInteger,mustBeNonnegative} = 6
         options.spectrum        string   {mustBeFile} = 'scheme/default_spectrum.mat'
     end
 
@@ -85,8 +86,8 @@ function ME_SI(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
     kernel_restricted = cell(length(TE),num_restricted);
     kernel_hindered   = cell(length(TE),num_hindered);
     kernel_isotropic  = cell(length(TE),num_isotropic);
-
-    lmax = 6; 
+    
+    lmax = options.lmax;
     nmax = lmax2nsh(lmax);
     scheme = gen_scheme('scheme/sphere_362_vertices.txt',lmax);
 
@@ -145,6 +146,7 @@ function ME_SI(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
             for k = 1:length(bshell)
                 kernel_isotropic{i,j}(bval==bshell(k),1) = exp(-bshell(k)*adc_isotropic(j)); 
             end
+            kernel_isotropic{i,j} = kernel_isotropic{i,j} * (4*pi);
         end
     end  
     
@@ -164,7 +166,6 @@ function ME_SI(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
     ampbasis = blkdiag(ampbasis{:});
     A1 = blkdiag(ampbasis,diag(ones(1,num_isotropic)));
     A2 = zeros(size(A1,1),1);
-    A3 = ones(size(A1,1),1);
 
     alpha_coef = zeros(num_restricted*nmax+num_hindered*nmax+num_isotropic,size(ME_dwi_array,2));
 
@@ -179,17 +180,23 @@ function ME_SI(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
         kernel = cell2mat([ cellfun(@(x,y) x.*y, kernel_restricted,num2cell(ME_t2r_restricted(:,i).*ones(1,num_restricted)), 'UniformOutput',false) ...
                             cellfun(@(x,y) x.*y, kernel_hindered,num2cell(ME_t2r_hindered(:,i).* ones(1,num_hindered)), 'UniformOutput',false) ...
                             cellfun(@(x,y) x.*y, kernel_isotropic,num2cell(ME_t2r_isotropic(:,i).* ones(1,num_isotropic)), 'UniformOutput',false)]);
-
+        
+        
         dwi = ME_dwi_array(:,i);
-        ind = ~isnan(dwi) & ~isinf(dwi);
 
         try
-            H = double(kernel(ind,:)'*kernel(ind,:));
-            f = -double(kernel(ind,:)'*dwi(ind,1));
-    
+            H = double(kernel'*kernel);
+            f = -double(kernel'*dwi);
+
             prob = osqp;
-            prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
+            prob.setup(H,f,A1,A2,[],'alpha',0.1,'verbose',0);
+
             res = prob.solve();
+
+            if max(res.x) > 100
+                continue;
+            end
+
             alpha_coef(:,i) = res.x;
         catch
             continue;
@@ -219,7 +226,7 @@ function ME_SI(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
     temp = single(zeros(num_isotropic,size(ME_mask,1)*size(ME_mask,2)*size(ME_mask,3)));
     info_fod.Datatype = 'single';
     info_fod.ImageSize(4) = num_isotropic;
-    temp(:,ME_mask_ind) = alpha_coef(end-num_isotropic+1:end,:)/sqrt(4*pi);
+    temp(:,ME_mask_ind) = alpha_coef(end-num_isotropic+1:end,:);
     fod = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3),num_isotropic);
 
     niftiwrite(fod,fullfile(outpath,'FOD_free.nii'),info_fod,'Compressed', true);

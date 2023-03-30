@@ -23,6 +23,8 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
 
         options.normalizeToS0   (1,1)    {mustBeNumericOrLogical} = true
         options.useBshell       (1,:)    {mustBeNumericOrLogical} = false
+        options.lambda          (1,1)    {mustBeNumeric} = 0.015
+        options.x0              (1,1)    {mustBeNumeric} = 100
         options.spectrum        string   {mustBeFile} = 'scheme/default_spectrum.mat'
     end
 
@@ -141,16 +143,22 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
         Aeq     = [];
         beq     = [];
     end
-
-    options = optimoptions(@fmincon,'Display','off');
+    lb = zeros(num_restricted+num_hindered+num_isotropic+3,1);
+    option = optimoptions(@fmincon,'Display','off');
     alpha_coef = zeros(num_restricted+num_hindered+num_isotropic+3,size(ME_dwi_mean_array,2));
-    alpha_init = [100;100;100;rand(num_restricted+num_hindered+num_isotropic,1)];
+    alpha_init = [options.x0*ones(3,1);rand(num_restricted+num_hindered+num_isotropic,1)];
 
-    H   = double([blk_kernel;0.015*diag(ones(1,size(blk_kernel,2)))]'*[blk_kernel;0.015*diag(ones(1,size(blk_kernel,2)))]);
-    K   = double(-[blk_kernel;0.015*diag(ones(1,size(blk_kernel,2)))]'*[ME_dwi_mean_array;zeros(size(blk_kernel,2),size(ME_dwi_mean_array,2))]);
+    I = [blk_kernel;options.lambda*diag(ones(1,size(blk_kernel,2)))];
+    H   = double(I'*I);
+    K   = double(-I'*[ME_dwi_mean_array;zeros(size(blk_kernel,2),size(ME_dwi_mean_array,2))]);
     A1  = diag(ones(size(blk_kernel,2),1));
     A2  = zeros(size(blk_kernel,2),1);
     A3  = ones(size(blk_kernel,2),1);
+
+    A1_new  = diag(ones(num_restricted+num_hindered+num_isotropic,1));
+    A2_new  = zeros(num_restricted+num_hindered+num_isotropic,1);
+    A3_new  = ones(num_restricted+num_hindered+num_isotropic,1);
+
     clear blk_kernel;
 
     %% optimization
@@ -161,9 +169,30 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
         prob.setup(H,f,A1,A2,A3,'alpha',0.1,'verbose',0);
         res = prob.solve();
         fun = @(x)echoFunc(x,res.x,TE,num_restricted,num_hindered,num_isotropic);
-        alpha_coef(:,i) = fmincon(fun,alpha_init,[],[],Aeq,beq,[],[],[],options);
+        beta = max(0,fmincon(fun,alpha_init,[],[],Aeq,beq,lb,[],[],option));
+
+        beta_restricted  = exp(-TE'./beta(1));
+        beta_hindered    = exp(-TE'./beta(2));
+        beta_isotropic   = exp(-TE'./beta(3));
+
+        kernel_new = [reshape(repmat(beta_restricted',length(ME_bshell{1}),1),[],1) .* cell2mat(kernel_restricted) ...
+                        reshape(repmat(beta_hindered',length(ME_bshell{1}),1),[],1) .* cell2mat(kernel_hindered) ...
+                        reshape(repmat(beta_isotropic',length(ME_bshell{1}),1),[],1) .* cell2mat(kernel_isotropic)];
+
+        f_new = ME_dwi_mean_array(:,i);
+        I_new = [kernel_new;options.lambda*diag(ones(1,size(kernel_new,2)))];
+        H_new   = double(I_new'*I_new);
+        K_new   = double(-I_new'*[f_new;zeros(size(kernel_new,2),1)]);
+
+        prob = osqp;
+        prob.setup(H_new,K_new,A1_new,A2_new,A3_new,'alpha',0.1,'verbose',0);
+        res = prob.solve();
+
+        alpha_coef(:,i) = [beta(1:3,1);res.x];
+
     end
     
+
     %% save results
     if ~exist(outpath,'dir')
         mkdir(outpath)
@@ -176,10 +205,11 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     temp(:,ME_mask_ind) = temp2;
     T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3));
 
-    info_t2r = ME_mask_info;
+    info_t2r = ME_dwi_info{1};
     info_t2r.Datatype = 'single';
     info_t2r.ImageSize = size(T2r);
     info_t2r.Transform = ME_dwi_info{1}.Transform;
+    info_t2r.PixelDimensions = info_t2r.PixelDimensions(1:length(size(T2r)));
     niftiwrite(single(T2r),fullfile(outpath,'T2_restricted.nii'),info_t2r,'Compressed', true);
 
     % save T2 hindered
@@ -189,10 +219,11 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     temp(:,ME_mask_ind) = temp2;
     T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3));
 
-    info_t2r = ME_mask_info;
+    info_t2r = ME_dwi_info{1};
     info_t2r.Datatype = 'single';
     info_t2r.ImageSize = size(T2r);
     info_t2r.Transform = ME_dwi_info{1}.Transform;
+    info_t2r.PixelDimensions = info_t2r.PixelDimensions(1:length(size(T2r)));
     niftiwrite(single(T2r),fullfile(outpath,'T2_hindered.nii'),info_t2r,'Compressed', true);
 
     % save T2 free water
@@ -202,10 +233,11 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     temp(:,ME_mask_ind) = temp2;
     T2r = reshape(temp',size(ME_mask,1),size(ME_mask,2),size(ME_mask,3));
 
-    info_t2r = ME_mask_info;
+    info_t2r = ME_dwi_info{1};
     info_t2r.Datatype = 'single';
     info_t2r.ImageSize = size(T2r);
     info_t2r.Transform = ME_dwi_info{1}.Transform;
+    info_t2r.PixelDimensions = info_t2r.PixelDimensions(1:length(size(T2r)));
     niftiwrite(single(T2r),fullfile(outpath,'T2_free.nii'),info_t2r,'Compressed', true);
 
     % save VF restricted
@@ -218,6 +250,8 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     info_vf= ME_dwi_info{1};
     info_vf.Datatype = 'single';
     info_vf.ImageSize = size(vf);
+    info_vf.Transform = ME_dwi_info{1}.Transform;
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
     niftiwrite(single(vf),fullfile(outpath,'VF_restricted.nii'),info_vf,'Compressed', true);
 
     % save VF hindered
@@ -230,6 +264,8 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     info_vf= ME_dwi_info{1};
     info_vf.Datatype = 'single';
     info_vf.ImageSize = size(vf);
+    info_vf.Transform = ME_dwi_info{1}.Transform;
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
     niftiwrite(single(vf),fullfile(outpath,'VF_hindered.nii'),info_vf,'Compressed', true);
 
     % save VF free water
@@ -242,6 +278,8 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     info_vf= ME_dwi_info{1};
     info_vf.Datatype = 'single';
     info_vf.ImageSize = size(vf);
+    info_vf.Transform = ME_dwi_info{1}.Transform;
+    info_vf.PixelDimensions = info_vf.PixelDimensions(1:length(size(vf)));
     niftiwrite(single(vf),fullfile(outpath,'VF_free.nii'),info_vf,'Compressed', true);
 end
 
@@ -269,5 +307,5 @@ function FF = echoFunc(x,alpha,TE,num_restricted,num_hindered,num_isotropic)
         end
     end
 
-    FF = norm(F);
+    FF = norm(F)^2;
 end
