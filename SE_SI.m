@@ -4,13 +4,13 @@ function SE_SI(fdwi,fbvec,fbval,fmask,outpath,options)
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Single-echo spectrum Imaging (SE-SI)
+    Single-echo spectrum imaging (SE-SI)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
 

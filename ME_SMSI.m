@@ -4,13 +4,13 @@ function ME_SMSI(fdwi,fbval,fmask,TE,outpath,options)
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Multi-echo spherical mean spectrum Imaging (ME-SMSI)
+    Multi-echo spherical mean spectrum imaging (ME-SMSI)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
     

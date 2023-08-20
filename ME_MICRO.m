@@ -9,8 +9,8 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
 

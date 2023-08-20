@@ -4,13 +4,13 @@ function ME_SIx(fdwi,fbvec,fbval,ft2r,fmask,TE,outpath,options)
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Parameter estimation with multi-echo spectrum Imaging (ME-SI)
+    Multi-echo spectrum imaging with B-dependent (ME-SIx)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
 

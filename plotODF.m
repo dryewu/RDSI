@@ -4,13 +4,13 @@ function plotODF(F_img,F_SH,F_mask,ROI,options)
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Microstructure parameter estimation
+    Visualization of orientation distribution function
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
 

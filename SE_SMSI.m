@@ -4,13 +4,13 @@ function SE_SMSI(fdwi,fbval,fmask,outpath,options)
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Single-echo spherical mean spectrum Imaging (SE-SMSI)
+    Single-echo spherical mean spectrum imaging (SE-SMSI)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
     

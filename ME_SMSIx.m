@@ -4,13 +4,13 @@ function ME_SMSIx(fdwi,fbval,fmask,TE,outpath,options)
     ░█─── ░█──░█ ░█░█░█ ░█▀▀▀ ░█─░█ ░█─
     ░█▄▄█ ░█▄▄▄█ ░█──░█ ░█▄▄▄ ░█▄▄▀ ▄█▄
 
-    Multi-echo spherical mean spectrum Imaging with B-dependent (ME-SMSIx)
+    Multi-echo spherical mean spectrum imaging with B-dependent (ME-SMSIx)
 
 
         Created by Ye Wu, PhD (dr.yewu@outlook.com)
 
-        - Nanjing University of Science and Technology
-        - University of North Carolina at Chapel Hill
+        - Nanjing University of Science and Technology, China, China
+        - University of North Carolina at Chapel Hill, USA
         
     %}
     
