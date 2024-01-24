@@ -20,15 +20,19 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
         F_isotropic             string   {mustBeNonzeroLengthText} = false  % [x,y,z,num_isotropic]
         fmask                   string   {mustBeFile}              = false           
         outpath                 string   {mustBeNonzeroLengthText} = false
-        
-        options.ME              (1,1)    {mustBeNumericOrLogical}  = false
+
         options.TE              (1,:)    {mustBeVector}            = false
-        options.T2_restricted   string   {mustBeNonzeroLengthText} = false  % [x,y,z,1]
-        options.T2_hindered     string   {mustBeNonzeroLengthText} = false  % [x,y,z,1]
-        options.T2_isotropic    string   {mustBeNonzeroLengthText} = false  % [x,y,z,1]
-        options.spectrum        string   {mustBeFile} = 'scheme/default_spectrum.mat'
+        options.F_T2            string   {mustBeNonzeroLengthText} = false  % [x,y,z,nb*3]
+
+        options.spectrum        string   {mustBeFile} = which('default_spectrum.mat')
+        options.index           (1,:)    {mustBeNonzeroLengthText} = {'WOT_AVF','WOT_ICVF','WOT_ECVF','WOT_IVF','WOT_uAD','WOT_uRD',...
+                                                                        'WOT_uMD','WOT_uFA','WOT_uICAD','WOT_uICRD','WOT_uECAD','WOT_uECRD',...
+                                                                        'WOT_uCS','WOT_uCL','WOT_uCP','WOT_NRr','WOT_NRh','WOT_SNRr','WOT_SNRh',...
+                                                                        'WOT_RNRr','WOT_RNRh','WT_R2r','WT_R2h','WT_R2f','WT_E2rh','WT_E2rf','WT_E2hf',...
+                                                                        'WT_R2rh','WT_R2hr','WT_R2rf','WT_R2fr','WT_R2hf','WT_R2fh'};
     end
 
+        
     ME_F_restricted_info   = niftiinfo(F_restricted);
     ME_F_hindered_info     = niftiinfo(F_hindered);
     ME_F_isotropic_info    = niftiinfo(F_isotropic);
@@ -40,15 +44,15 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
     ME_mask                = single(round(niftiread(ME_mask_info)));
 
 
-    if options.ME
-        ME_T2_restricted_info   = niftiinfo(options.T2_restricted);
-        ME_T2_restricted        = niftiread(ME_T2_restricted_info);
+    if exist(options.F_T2,'file')
+        ME_T2_info   = niftiinfo(options.F_T2);
+        ME_T2        = niftiread(ME_T2_info);
+        [~,~,~,nm] = size(ME_T2);
 
-        ME_T2_hindered_info     = niftiinfo(options.T2_hindered);
-        ME_T2_hindered          = niftiread(ME_T2_hindered_info);
+        ME_T2_restricted        = ME_T2(:,:,:,1:nm/3);
+        ME_T2_hindered          = ME_T2(:,:,:,1+nm/3 : 2*nm/3);
+        ME_T2_isotropic         = ME_T2(:,:,:,1+2*nm/3:end);
 
-        ME_T2_isotropic_info    = niftiinfo(options.T2_isotropic);
-        ME_T2_isotropic         = niftiread(ME_T2_isotropic_info);
     end
 
     default_spectrum = load(options.spectrum);
@@ -61,125 +65,145 @@ function ME_MICRO(F_restricted,F_hindered,F_isotropic,fmask,outpath,options)
     num_hindered    = size(adc_hindered,1);    
     num_isotropic   = size(adc_isotropic,1);  
 
-
-    %% WOT: without T2
-    % Anisotropic VF
-    WOT_AVF = sum(ME_F_restricted,4)+sum(ME_F_hindered,4);
-
-    % Intra-cellular VF 
-    WOT_ICVF = sum(ME_F_restricted,4) ./ WOT_AVF;
-
-    % Extra-cellular VF 
-    WOT_ECVF = sum(ME_F_hindered,4) ./ WOT_AVF;
-
-    % Isotropic VF
-    WOT_IVF = sum(ME_F_isotropic,4);
-
-    % Microscopic AD
-    ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
-    WOT_uAD = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
-
-    % Microscopic RD
-    WOT_uRD = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
-
-    % Microscopic MD
-    WOT_uMD = (WOT_uAD + WOT_uRD * 2) ./ 3;
-
-    % Microscopic FA
-    WOT_uFA = (WOT_uAD - WOT_uRD) ./ sqrt(WOT_uAD.^2 + 2*WOT_uRD.^2);
-
-    % Intra-cellular AD
-    WOT_uICAD = sum(ME_F_restricted.*reshape(adc_restricted(:,1),1,1,1,num_restricted),4) ./ sum(ME_F_restricted,4);
-    
-    % Intra-cellular RD
-    WOT_uICRD = sum(ME_F_restricted.*reshape(adc_restricted(:,2),1,1,1,num_restricted),4) ./ sum(ME_F_restricted,4);
-    
-    % Extra-cellular AD
-    WOT_uECAD = sum(ME_F_hindered.*reshape(adc_hindered(:,1),1,1,1,num_hindered),4) ./ sum(ME_F_hindered,4);
-    
-    % Extra-cellular RD
-    WOT_uECRD = sum(ME_F_hindered.*reshape(adc_hindered(:,2),1,1,1,num_hindered),4) ./ sum(ME_F_hindered,4);
-       
-    % Microscopic sphericity
-    WOT_uCS= WOT_uRD./WOT_uAD;
-
-    % Microscopic linearity
-    WOT_uCL= (WOT_uAD-WOT_uMD)./WOT_uMD;
-
-    % Microscopic plane
-    WOT_uCP = (WOT_uMD-WOT_uRD)./WOT_uAD;
-    
-    % mean effective neurite radius 
-    WOT_NRr = mean((ME_F_restricted.*reshape(adc_restricted(:,1).*adc_restricted(:,2),1,1,1,num_restricted)).^0.25,4);
-    WOT_NRh = mean((ME_F_hindered.*reshape(adc_hindered(:,1).*adc_hindered(:,2),1,1,1,num_hindered)).^0.25,4);
-
-    % std effective neurite radius 
-    WOT_SNRr = std((ME_F_restricted.*reshape(adc_restricted(:,1).*adc_restricted(:,2),1,1,1,num_restricted)).^0.25,[],4);
-    WOT_SNRh = std((ME_F_hindered.*reshape(adc_hindered(:,1).*adc_hindered(:,2),1,1,1,num_hindered)).^0.25,[],4);
-
-    % relative effective neurite radius
-    WOT_RNRr = WOT_SNRr./WOT_NRr;
-    WOT_RNRh = WOT_SNRh./WOT_NRh;
-
-
     if ~exist(outpath,'dir')
         mkdir('outpath')
     end
-    info = ME_F_restricted_info;
-    info.ImageSize = size(ME_F_restricted,[1,2,3]);
-    info.PixelDimensions = info.PixelDimensions(1:3);
-    niftiwrite(single(WOT_AVF.*ME_mask),fullfile(outpath,'WOT_AVF.nii'),info,'Compressed', true);
-    niftiwrite(single(WOT_ICVF.*ME_mask),fullfile(outpath,'WOT_ICVF.nii'),info,'Compressed', true);
-    niftiwrite(single(WOT_ECVF.*ME_mask),fullfile(outpath,'WOT_ECVF.nii'),info,'Compressed', true);
-    niftiwrite(WOT_IVF.*ME_mask,fullfile(outpath,'WOT_IVF.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uAD.*ME_mask,fullfile(outpath,'WOT_uAD.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uMD.*ME_mask,fullfile(outpath,'WOT_uMD.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uFA.*ME_mask,fullfile(outpath,'WOT_uFA.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uICAD.*ME_mask,fullfile(outpath,'WOT_uICAD.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uECAD.*ME_mask,fullfile(outpath,'WOT_uECAD.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uICRD.*ME_mask,fullfile(outpath,'WOT_uICRD.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uECRD.*ME_mask,fullfile(outpath,'WOT_uECRD.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uCS.*ME_mask,fullfile(outpath,'WOT_uCS.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uCL.*ME_mask,fullfile(outpath,'WOT_uCL.nii'),info,'Compressed', true);
-    niftiwrite(WOT_uCP.*ME_mask,fullfile(outpath,'WOT_uCP.nii'),info,'Compressed', true);
-    niftiwrite(WOT_NRr.*ME_mask,fullfile(outpath,'WOT_NRr.nii'),info,'Compressed', true);
-    niftiwrite(WOT_NRh.*ME_mask,fullfile(outpath,'WOT_NRh.nii'),info,'Compressed', true);
-    niftiwrite(WOT_SNRr.*ME_mask,fullfile(outpath,'WOT_SNRr.nii'),info,'Compressed', true);
-    niftiwrite(WOT_SNRh.*ME_mask,fullfile(outpath,'WOT_SNRh.nii'),info,'Compressed', true);
-    niftiwrite(WOT_RNRr.*ME_mask,fullfile(outpath,'WOT_RNRr.nii'),info,'Compressed', true);
-    niftiwrite(WOT_RNRh.*ME_mask,fullfile(outpath,'WOT_RNRh.nii'),info,'Compressed', true);
 
+    %% WOT: without T2
+    for i = 1:length(options.index)
+        switch options.index{i}
+            case 'WOT_AVF'  % Anisotropic VF 
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                data = (sum(ME_F_restricted,4)+sum(ME_F_hindered,4))./ sum(ME_vf,4);
 
-%     niftiwrite(WT_R2EX.*ME_mask,fullfile(outpath,'WT_R2EX.nii'),info,'Compressed', true);
-%     niftiwrite(WOT_RNO.*ME_mask,fullfile(outpath,'WOT_RNO.nii'),info,'Compressed', true);
-%     niftiwrite(WOT_RND.*ME_mask,fullfile(outpath,'WOT_RND.nii'),info,'Compressed', true);
-%     niftiwrite(WOT_HNO.*ME_mask,fullfile(outpath,'WOT_HNO.nii'),info,'Compressed', true);
-%     niftiwrite(WOT_HND.*ME_mask,fullfile(outpath,'WOT_HND.nii'),info,'Compressed', true);
-    
-    if options.ME
-        % relaxation rate on restricted
-        WT_R2r = 1./(ME_T2_restricted);
+            case 'WOT_ICVF' % Intra-cellular VF 
+                WOT_AVF = sum(ME_F_restricted,4)+sum(ME_F_hindered,4);
+                data = sum(ME_F_restricted,4) ./ WOT_AVF;
 
-        % relaxation rate on hindered
-        WT_R2h = 1./(ME_T2_hindered);
+            case 'WOT_ECVF' % Extra-cellular VF 
+                WOT_AVF = sum(ME_F_restricted,4)+sum(ME_F_hindered,4);
+                data = sum(ME_F_hindered,4) ./ WOT_AVF;
 
-        % relaxation rate on isotropic
-        WT_R2f = 1./(ME_T2_isotropic);
+            case 'WOT_IVF' % Isotropic VF
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                data = sum(ME_F_isotropic,4)./ sum(ME_vf,4);
 
-        % relaxation rate on exchange between restricted and hindered
-        WT_E2rh = abs(1./(ME_T2_restricted)-(1./(ME_T2_hindered)));
+            case 'WOT_uAD' % Microscopic AD
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                data = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
 
-        % relaxation rate on exchange between restricted and isotropic
-        WT_E2rf = abs(1./(ME_T2_restricted)-(1./(ME_T2_isotropic)));
+            case 'WOT_uRD' % Microscopic RD
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                data = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
 
-        % relaxation rate on exchange between hindered and isotropic
-        WT_E2hf = abs(1./(ME_T2_hindered)-(1./(ME_T2_isotropic)));
+            case 'WOT_uMD' % Microscopic MD
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                WOT_uAD = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uRD = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                data = (WOT_uAD + WOT_uRD * 2) ./ 3;
 
-        niftiwrite(single(WT_R2r.*ME_mask),fullfile(outpath,'WT_R2r.nii'),info,'Compressed', true);
-        niftiwrite(single(WT_R2h.*ME_mask),fullfile(outpath,'WT_R2h.nii'),info,'Compressed', true);
-        niftiwrite(single(WT_R2f.*ME_mask),fullfile(outpath,'WT_R2f.nii'),info,'Compressed', true);
-        niftiwrite(single(WT_E2rh.*ME_mask),fullfile(outpath,'WT_E2rh.nii'),info,'Compressed', true);
-        niftiwrite(single(WT_E2rf.*ME_mask),fullfile(outpath,'WT_E2rf.nii'),info,'Compressed', true);
-        niftiwrite(single(WT_E2hf.*ME_mask),fullfile(outpath,'WT_E2hf.nii'),info,'Compressed', true);
+            case 'WOT_uFA' % Microscopic FA
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                WOT_uAD = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uRD = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                data = (WOT_uAD - WOT_uRD) ./ sqrt(WOT_uAD.^2 + 2*WOT_uRD.^2);
+
+            case 'WOT_uICAD' % Intra-cellular AD
+                data = sum(ME_F_restricted.*reshape(adc_restricted(:,1),1,1,1,num_restricted),4) ./ sum(ME_F_restricted,4);
+                
+            case 'WOT_uICRD' % Intra-cellular RD
+                data = sum(ME_F_restricted.*reshape(adc_restricted(:,2),1,1,1,num_restricted),4) ./ sum(ME_F_restricted,4);
+
+            case 'WOT_uECAD' % Extra-cellular AD
+                data = sum(ME_F_hindered.*reshape(adc_hindered(:,1),1,1,1,num_hindered),4) ./ sum(ME_F_hindered,4);
+
+            case 'WOT_uECRD' % Extra-cellular RD
+                data = sum(ME_F_hindered.*reshape(adc_hindered(:,2),1,1,1,num_hindered),4) ./ sum(ME_F_hindered,4);
+
+            case 'WOT_uCS' % Microscopic sphericity
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                WOT_uAD = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uRD = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                data= WOT_uRD./WOT_uAD;
+
+            case 'WOT_uCL' % Microscopic linearity
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                WOT_uAD = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uRD = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uMD = (WOT_uAD + WOT_uRD * 2) ./ 3;
+                data= (WOT_uAD-WOT_uMD)./WOT_uMD;
+
+            case 'WOT_uCP' % Microscopic plane
+                ME_vf   = cat(4,ME_F_restricted,ME_F_hindered,ME_F_isotropic);
+                WOT_uAD = sum(ME_vf.*reshape([adc_restricted(:,1); adc_hindered(:,1); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uRD = sum(ME_vf.*reshape([adc_restricted(:,2); adc_hindered(:,2); adc_isotropic(:,1)],1,1,1,num_restricted+num_hindered+num_isotropic),4) ./ sum(ME_vf,4);
+                WOT_uMD = (WOT_uAD + WOT_uRD * 2) ./ 3;
+                data = (WOT_uMD-WOT_uRD)./WOT_uAD;
+                
+            case 'WOT_NRr' % mean effective Intra-neurite radius 
+                data = mean((ME_F_restricted.*reshape(adc_restricted(:,1).*adc_restricted(:,2),1,1,1,num_restricted)).^0.25,4);
+
+            case 'WOT_NRh' % mean effective Extra-neurite radius 
+                data = mean((ME_F_hindered.*reshape(adc_hindered(:,1).*adc_hindered(:,2),1,1,1,num_hindered)).^0.25,4);
+
+            case 'WOT_SNRr' % std effective Intra-neurite radius 
+                data = std((ME_F_restricted.*reshape(adc_restricted(:,1).*adc_restricted(:,2),1,1,1,num_restricted)).^0.25,[],4);
+
+            case 'WOT_SNRh' % std effective Extra-neurite radius 
+                data = std((ME_F_hindered.*reshape(adc_hindered(:,1).*adc_hindered(:,2),1,1,1,num_hindered)).^0.25,[],4);
+
+            case 'WOT_RNRr' % relative effective Intra-neurite radius
+                WOT_SNRr = std((ME_F_restricted.*reshape(adc_restricted(:,1).*adc_restricted(:,2),1,1,1,num_restricted)).^0.25,[],4);
+                WOT_NRr = mean((ME_F_restricted.*reshape(adc_restricted(:,1).*adc_restricted(:,2),1,1,1,num_restricted)).^0.25,4);
+                data = WOT_SNRr./WOT_NRr;
+
+            case 'WOT_RNRh' % relative effective Extra-neurite radius
+                WOT_NRh = mean((ME_F_hindered.*reshape(adc_hindered(:,1).*adc_hindered(:,2),1,1,1,num_hindered)).^0.25,4);
+                WOT_SNRh = std((ME_F_hindered.*reshape(adc_hindered(:,1).*adc_hindered(:,2),1,1,1,num_hindered)).^0.25,[],4);
+                data = WOT_SNRh./WOT_NRh;
+
+            case 'WT_R2r' % relaxation rate on restricted
+                data = 1./(ME_T2_restricted);
+            
+            case 'WT_R2h' % relaxation rate on hindered
+                data = 1./(ME_T2_hindered);
+            
+            case 'WT_R2f' % relaxation rate on isotropic
+                data = 1./(ME_T2_isotropic);
+            
+            case 'WT_E2rh' % relaxation rate on exchange between restricted and hindered
+                data = abs(1./(ME_T2_restricted-ME_T2_hindered));
+                % data = abs(1./(ME_T2_restricted)-(1./(ME_T2_hindered)));
+            
+            case 'WT_E2rf' % relaxation rate on exchange between restricted and isotropic
+                data = abs(1./(ME_T2_restricted-ME_T2_isotropic));
+                % data = abs(1./(ME_T2_restricted)-(1./(ME_T2_isotropic)));
+            
+            case 'WT_E2hf' % relaxation rate on exchange between hindered and isotropic
+                data = abs(1./(ME_T2_hindered-ME_T2_isotropic));
+                % data = abs(1./(ME_T2_hindered)-(1./(ME_T2_isotropic)));
+
+            case 'WT_R2rh' % relational rate on exchange between restricted and hindered
+                data = ME_T2_restricted./ME_T2_hindered;
+            
+            case 'WT_R2hr' % relational rate on exchange between restricted and hindered
+                data = ME_T2_hindered./ME_T2_restricted;
+
+            case 'WT_R2rf' % relational rate on exchange between restricted and isotropic
+                data = ME_T2_restricted./ME_T2_isotropic;
+
+            case 'WT_R2fr' % relational rate on exchange between restricted and isotropic
+                data = ME_T2_isotropic./ME_T2_restricted;
+
+            case 'WT_R2hf' % relational rate on exchange between hindered and isotropic
+                data = ME_T2_hindered./ME_T2_isotropic;
+
+            case 'WT_R2fh' % relational rate on exchange between hindered and isotropic
+                data = ME_T2_isotropic./ME_T2_hindered;
+        end
+        info = ME_F_restricted_info;
+        info.ImageSize = size(data);
+        info.PixelDimensions = info.PixelDimensions(1:length(size(data)));
+        niftiwrite(single(max(0,data).*ME_mask),fullfile(outpath,strcat(options.index{i},'.nii')),info,'Compressed', true);
     end
 end

@@ -39,7 +39,7 @@ function SE_SMSI(fdwi,fbval,fmask,outpath,options)
     SE_bval         = round(importdata(fbval)'/100)*100;
     SE_mask_info    = niftiinfo(fmask);
     SE_mask         = round(niftiread(SE_mask_info));
-    clear fdwi fbval fmask SE_mask_info;
+    clear fdwi fmask SE_mask_info;
 
     if options.useBshell
         ind         = ismember(fbval,options.useBshell);

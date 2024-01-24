@@ -25,7 +25,7 @@ function ME_SMSIx(fdwi,fbval,fmask,TE,outpath,options)
         options.useBshell       (1,:)    {mustBeNumericOrLogical} = false
         options.lambda          (1,1)    {mustBeNumeric} = 0.01
         options.x0              (1,1)    {mustBeNumeric} = 75
-        options.spectrum        string   {mustBeFile} = 'scheme/default_spectrum.mat'
+        options.spectrum        string   {mustBeFile} = which('default_spectrum.mat')
     end
 
     addpath('third/osqp');
@@ -42,7 +42,7 @@ function ME_SMSIx(fdwi,fbval,fmask,TE,outpath,options)
     ME_bval         = cellfun(@(x)round(importdata(x)'/100)*100,fbval,'UniformOutput',false); 
     ME_mask_info    = niftiinfo(fmask);
     ME_mask         = round(niftiread(ME_mask_info));
-    clear ind fdwi fbval fmask;
+    clear ind fdwi fmask;
 
     if options.useBshell
         ind         = cellfun(@(x)find(ismember(x,options.useBshell)),fbval,'UniformOutput',false); 
